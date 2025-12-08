@@ -86,7 +86,7 @@ This project stands on the shoulders of giants in the DIY community.
 
 * **Salim Benbouzid:** For setting the seed and inspiring the DIY SpaceMouse revolution.
 * **AndunHH:** For his excellent work on the software side, proving the concept of using the Infineon sensor for navigation.
-* **Leo SpaceLab:** For refining the mechanical design that brought us all here.
+* **LeoSpaceLab:** For refining the mechanical design that brought us all here.
 
 **Developed with ❤️ for the maker community by Axiom3d (aka Uzzo)**
 
