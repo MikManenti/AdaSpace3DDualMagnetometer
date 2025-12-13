@@ -104,22 +104,18 @@ You can tweak the feel of your SpaceMouse without touching the complex code.
 ## 🤝 Credits & Acknowledgments
 
 This project stands on the shoulders of giants in the DIY community.
-
-* **Salim Benbouzid:** For setting the seed and inspiring the DIY SpaceMouse revolution.
-* **AndunHH:** For his excellent work on the software side, proving the concept of using the Infineon sensor for navigation.
-* **LeoSpaceLab:** For refining the mechanical design that brought us all here.
+* **[Salim Benbouzid](https://www.youtube.com/watch?v=iHBgNGnTiK4&t=323s):** For setting the seed and inspiring the DIY SpaceMouse revolution with his original video.
+* **[AndunHH](https://github.com/AndunHH/spacemouse):** For his excellent work on the software side, proving the concept of using the drivers for navigation.
+* **[LeoSpaceLab](https://makerworld.com/en/models/2029436-spacemouse-diy-no-springs-fusion360-magnets#profileId-2188468):** For refining the mechanical design that brought us all here (watch the [build video](https://www.youtube.com/watch?v=LWE_vR1oFRo)).
 
 **Developed with ❤️ for the maker community by Axiom3d (aka Uzzo)**
 
-
-
+> ⚠️ **Disclaimer:** This project is intended for educational purposes only. The creators assume no liability for any damages or injuries — build and modify at your own risk.
 
 This work is licensed under a **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0)**.
-
 You are free to:
 * **Share:** Copy and redistribute the material in any medium or format.
 * **Adapt:** Remix, transform, and build upon the material.
-
 Under the following terms:
 * **Attribution:** You must give appropriate credit to the original authors.
 * **NonCommercial:** You may not use the material for commercial purposes.
