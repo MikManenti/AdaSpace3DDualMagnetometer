@@ -16,7 +16,7 @@ Your DIY build will now be recognized by Windows/macOS as a genuine **SpaceMouse
 
 I am still learning the ropes here on GitHub, so **support is offered mainly on Discord**.
 
-This is also the place where we hang out to talk, make suggestions, and dream about the new upcoming **AdaSpace3D v2**!
+This is also the place where we hang out to talk, make suggestions, and dream about the new upcoming **v2 SpaceMouse**!
 
 👉 **[Join the Discord Server](http://dsc.gg/axiom3d)**
 
