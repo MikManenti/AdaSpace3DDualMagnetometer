@@ -88,6 +88,11 @@ void handleLeds(double totalMove) {
     updateHardwareLeds(r, g, b);
   }
   else if (LED_MODE == 2) { // REACTIVE
+      // Rate-limit LED updates to prevent strip.show() from blocking HID reports
+      static unsigned long lastLedUpdate = 0;
+      if (millis() - lastLedUpdate < 50) return; // Only update LEDs every 50ms
+      lastLedUpdate = millis();
+      
       int minScale = 50;  
       int maxScale = 255; 
       int currentScale = minScale;
