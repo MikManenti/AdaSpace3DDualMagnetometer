@@ -40,12 +40,15 @@
 #define CONFIG_ROT_SCALE       40 
 
 // DEADZONES: Keep small (1.0) because raw values are tiny
-#define CONFIG_DEADZONE        1.0    
-#define CONFIG_ZOOM_DEADZONE   2.5
-#define CONFIG_ROT_DEADZONE    1.5
+// These values filter out sensor noise and unintended micro-movements
+#define CONFIG_DEADZONE        1.0    // X/Y translation deadzone
+#define CONFIG_ZOOM_DEADZONE   2.5    // Z translation deadzone  
+#define CONFIG_ROT_DEADZONE    1.5    // Rotation deadzones (Rx, Ry, Rz)
 
 // Minimum movement threshold for dual sensor mode
 // This determines the minimum movement value to be considered significant
+// Lower values = more sensitive, Higher values = less responsive but less noise
+// Adjust based on your physical setup and magnet distances (7-8mm default)
 #define CONFIG_MIN_MOVEMENT_THRESHOLD  0.5
 
 // --- USB IDENTIFICATION ---

@@ -1,7 +1,19 @@
 /*
- * AdaSpace3D - Unified Firmware (Golden Release)
- * * Features: Dual LED Drive, Reactive Lighting, Auto-Hardware Detect
+ * AdaSpace3D - Unified Firmware (Dual Magnetometer Edition)
+ * * Features: Dual LED Drive, Reactive Lighting, Auto-Hardware Detect, Dual Magnetometer Fusion
  * * Safety:   Includes Sensor Watchdog to auto-reset frozen I2C lines
+ * * Advanced: Kalman Filtering, 6DOF separation, Predominant Movement Detection
+ * 
+ * Dual Magnetometer Configuration:
+ * - Sensor 1 (Solder): Located at 3 o'clock position under knob
+ * - Sensor 2 (Cable):  Located at 6 o'clock position, rotated 90° clockwise
+ *   - Coordinate transformation applied: X' = Y, Y' = -X, Z' = Z
+ * 
+ * Sensor Fusion Logic:
+ * - Translation (Tx, Ty, Tz): Average of both sensors
+ * - Rotation (Rx, Ry, Rz): Differential measurements between sensors
+ * - Kalman filtering applied to all 6 DOF for noise reduction
+ * - Only predominant movement is transmitted via HID (no cross-talk)
  */
 
 #include "Adafruit_TinyUSB.h"
@@ -72,6 +84,7 @@ using namespace ifx::tlx493d;
 TLx493D_A1B6 magCable(Wire1, TLx493D_IIC_ADDR_A0_e);
 TLx493D_A1B6 magSolder(Wire, TLx493D_IIC_ADDR_A0_e);
 bool bothSensorsActive = false;
+bool cableSensorActive = false;
 
 // HID Report Descriptor
 static const uint8_t spaceMouse_hid_report_desc[] = {
@@ -201,14 +214,17 @@ void setup() {
   
   if (cable_ok && solder_ok) {
     bothSensorsActive = true;
+    cableSensorActive = true;
     updateHardwareLeds(0, 0, 255); delay(500); // Blue for Dual Sensor mode
   } 
   else if (cable_ok) {
     bothSensorsActive = false;
+    cableSensorActive = true;
     updateHardwareLeds(0, 255, 0); delay(500); // Green for Cable only
   } 
   else if (solder_ok) {
     bothSensorsActive = false;
+    cableSensorActive = false;
     updateHardwareLeds(0, 255, 255); delay(500); // Cyan for Solder only
   } 
   else {
@@ -438,13 +454,13 @@ void readAndSendMagnetometerData() {
 // Legacy single sensor function
 void readAndSendSingleMagnetometer() {
   double x, y, z;
-  TLx493D_A1B6* activeSensor = magCable.begin() ? &magCable : &magSolder;
-  SensorWatchdog* watchdog = activeSensor == &magCable ? &watchdogCable : &watchdogSolder;
-  MagCalibration* magCal = activeSensor == &magCable ? &magCalCable : &magCalSolder;
+  TLx493D_A1B6* activeSensor = cableSensorActive ? &magCable : &magSolder;
+  SensorWatchdog* watchdog = cableSensorActive ? &watchdogCable : &watchdogSolder;
+  MagCalibration* magCal = cableSensorActive ? &magCalCable : &magCalSolder;
   
   // Preventive Reset Check
   if(PREVENTIVE_RESET_INTERVAL > 0 && millis() - watchdog->lastPreventiveReset > PREVENTIVE_RESET_INTERVAL) {
-    resetMagnetometer(activeSensor == &magCable);
+    resetMagnetometer(cableSensorActive);
     watchdog->lastPreventiveReset = millis();
     return;
   }
@@ -456,7 +472,7 @@ void readAndSendSingleMagnetometer() {
           if(x == watchdog->last_x && y == watchdog->last_y && z == watchdog->last_z) {
             watchdog->sameValueCount++;
             if(watchdog->sameValueCount >= HANG_THRESHOLD) {
-              resetMagnetometer(activeSensor == &magCable);
+              resetMagnetometer(cableSensorActive);
               return;
             }
           } else {
