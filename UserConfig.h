@@ -15,14 +15,14 @@
                                    // 2 = Debug / Reactive (Status Colors + White Flash on Move)
 
 // Settings for Addressable Strip (GPIO 4)
-#define NUM_ADDRESSABLE_LEDS 3      // How many LEDs are in your strip?
-#define LED_BRIGHTNESS       128    // 0 to 255 (Global brightness)
+#define NUM_ADDRESSABLE_LEDS 4      // How many LEDs are in your strip?
+#define LED_BRIGHTNESS       130    // 0 to 255 (Global brightness)
 
 // Settings for Static/Breathing Modes (Ignored in Debug Mode)
 // Set your preferred color (0-255)
 #define LED_COLOR_R         0      // Red
-#define LED_COLOR_G         255    // Green
-#define LED_COLOR_B         0    // Blue (Cyan)
+#define LED_COLOR_G         0    // Green
+#define LED_COLOR_B         255    // Blue (Cyan)
 
 // --- PIN DEFINITIONS ---
 #define MAG_POWER_PIN       15     
@@ -80,3 +80,4 @@
 #define DEBUG_MODE          false
 
 #endif // USER_CONFIG_H
+
