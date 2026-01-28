@@ -26,15 +26,21 @@ This is also the place where we hang out to talk, make suggestions, and dream ab
 ## ✨ Features
 
 * **Native Driver Support:** Emulates the official 3DConnexion USB protocol. Works out-of-the-box with standard drivers.
+* **🆕 Dual Magnetometer Support:** Advanced sensor fusion using two magnetometers for improved 6DOF motion detection with separated translation and rotation. [See Configuration Guide](DUAL-MAGNETOMETER.md)
 * **Unified Firmware:** One file for everyone. The code **automatically detects** if your sensor is connected via **Stemma QT (Cable)** or **Soldered Headers**.
+* **Kalman Filtering:** Advanced noise reduction on all movement axes for smooth, precise control.
+* **Predominant Movement Detection:** Eliminates cross-talk by sending only the strongest movement at a time.
 * **Reactive Lighting:**
     * **Dual Drive:** Supports both Addressable (NeoPixel) and Standard LEDs simultaneously.
     * **Smart Feedback:** LED glows dim when idle and brightens as you move the knob.
-* **5DOF Navigation:** Smooth X, Y, Z translation + Pitch and Roll.
+* **6DOF Navigation:** Full translation (X, Y, Z) and rotation (Pitch, Roll, Yaw) when using dual magnetometers.
 * **Bulletproof Flasher:** Includes a custom "One-Click" build script that handles libraries, compilers, and upload automatically.
 
-> [!IMPORTANT]
-> **Hardware Limitation:** Spin/Twist rotation is **not functional** due to the physics of the current sensor setup. For best results, configure your 3DConnexion driver to use either **Pan/Zoom** or **Rotation** mode—not both simultaneously. Use the programmable buttons to toggle between these modes on-the-fly.
+> [!TIP]
+> **Dual Magnetometer Configuration:** For optimal performance with advanced 6DOF separation, use two magnetometers positioned at 3 o'clock and 6 o'clock under the knob. The firmware automatically detects and calibrates both sensors. See [DUAL-MAGNETOMETER.md](DUAL-MAGNETOMETER.md) for setup details.
+
+> [!NOTE]
+> **Single Sensor Mode:** With a single magnetometer, yaw (twist) rotation is limited due to the physics of the sensor setup. For best results, configure your 3DConnexion driver to use either **Pan/Zoom** or **Rotation** mode—not both simultaneously. Use the programmable buttons to toggle between these modes on-the-fly.
 
 ---
 
@@ -44,10 +50,18 @@ This firmware is designed for the **Adafruit QT Py RP2040**, but will possibly w
 
 | Component | Pin (Default) | Notes |
 | :--- | :--- | :--- |
-| **Sensor** | **TLx493D** | Auto-detects on `Wire1` (Stemma) or `Wire` (Solder). |
+| **Sensor(s)** | **TLx493D** | Auto-detects on `Wire1` (Stemma) or `Wire` (Solder). Supports 1 or 2 sensors simultaneously. |
 | **Buttons** | A0, A1, A2, A3 | Mapped to HID Buttons 13, 14, 15, 16. |
 | **NeoPixel** | GPIO 4 | Addressable RGB Strip (WS2812). |
 | **Simple LED** | GPIO 3 | Standard 2-leg LED (PWM brightness). |
+
+### LED Status Indicators
+
+The firmware uses LED colors to indicate sensor detection status on startup:
+- **🔵 Blue**: Both sensors detected (dual magnetometer mode)
+- **🟢 Green**: Cable sensor only (single sensor mode)
+- **🔵 Cyan**: Solder sensor only (single sensor mode)
+- **🔴 Red (blinking)**: No sensors detected (error)
 
 > **Note:** The firmware drives **GPIO 3 and GPIO 4 simultaneously**. You can connect your LED to either pin depending on your build, and change the behavior in `UserConfig.h`.
 
