@@ -29,7 +29,7 @@ This is also the place where we hang out to talk, make suggestions, and dream ab
 * **🆕 Dual Magnetometer Support:** Advanced sensor fusion using two magnetometers for improved 6DOF motion detection with separated translation and rotation. [See Configuration Guide](DUAL-MAGNETOMETER.md)
 * **Unified Firmware:** One file for everyone. The code **automatically detects** if your sensor is connected via **Stemma QT (Cable)** or **Soldered Headers**.
 * **Kalman Filtering:** Advanced noise reduction on all movement axes for smooth, precise control.
-* **Predominant Movement Detection:** Eliminates cross-talk by sending only the strongest movement at a time.
+* **Predominant Movement Detection:** Sends only the strongest movement at a time to eliminate cross-talk between axes. This ensures clean, separated movements ideal for precise 3D modeling work. For applications requiring simultaneous multi-axis movements, the single sensor mode provides traditional behavior.
 * **Reactive Lighting:**
     * **Dual Drive:** Supports both Addressable (NeoPixel) and Standard LEDs simultaneously.
     * **Smart Feedback:** LED glows dim when idle and brightens as you move the knob.

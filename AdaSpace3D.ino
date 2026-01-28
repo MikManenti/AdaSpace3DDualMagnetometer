@@ -26,6 +26,7 @@
 #define PIN_SIMPLE     3
 #define HANG_THRESHOLD 50              // consecutive identical readings before reset
 #define PREVENTIVE_RESET_INTERVAL 0    // Set to 300000 (5 mins) if you want periodic resets
+#define LED_MOVEMENT_INTENSITY_MULTIPLIER 30.0  // Converts movement magnitude to LED brightness
 
 // --- LED SETUP ---
 Adafruit_NeoPixel strip(NUM_ADDRESSABLE_LEDS, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
@@ -53,6 +54,9 @@ struct KalmanFilter {
   double update(double measurement) {
     // Prediction
     p = p + q;
+    
+    // Prevent filter lock-up by maintaining minimum covariance
+    if (p < 0.001) p = 0.001;
     
     // Update
     k = p / (p + r);
@@ -145,7 +149,7 @@ void handleLeds(double totalMove) {
       int currentScale = minScale;
 
       if (totalMove > CONFIG_DEADZONE) {
-         int addedIntensity = (int)(totalMove * 30.0);
+         int addedIntensity = (int)(totalMove * LED_MOVEMENT_INTENSITY_MULTIPLIER);
          currentScale = constrain(minScale + addedIntensity, minScale, maxScale);
       }
       
@@ -174,11 +178,27 @@ void resetMagnetometer(bool isCable) {
   }
   delay(50);
   
-  if (sensor->begin()) {
+  // Try to reinitialize the sensor
+  bool success = sensor->begin();
+  
+  if (success) {
     wd->sameValueCount = 0;
     wd->lastResetTime = millis();
     // Return to normal color
     updateHardwareLeds(LED_COLOR_R, LED_COLOR_G, LED_COLOR_B);
+  } else {
+    // Reset failed - flash red LED as error indicator
+    for (int i = 0; i < 3; i++) {
+      updateHardwareLeds(255, 0, 0); delay(100);
+      updateHardwareLeds(0, 0, 0); delay(100);
+    }
+    
+    // If in dual sensor mode and one fails, degrade to single sensor mode
+    if (bothSensorsActive) {
+      bothSensorsActive = false;
+      cableSensorActive = !isCable;  // Use the other sensor
+      updateHardwareLeds(255, 128, 0); delay(500); // Orange = degraded mode
+    }
   }
 }
 
@@ -260,14 +280,16 @@ void calibrateMagnetometer() {
   for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
     double x, y, z;
     
-    // Calibrate solder sensor
-    if(magSolder.getMagneticField(&x, &y, &z)) {
-      sumX_solder += x; sumY_solder += y; sumZ_solder += z;
-      valid_solder++;
+    // Calibrate solder sensor (if active)
+    if (!cableSensorActive || bothSensorsActive) {
+      if(magSolder.getMagneticField(&x, &y, &z)) {
+        sumX_solder += x; sumY_solder += y; sumZ_solder += z;
+        valid_solder++;
+      }
     }
     
     // Calibrate cable sensor (if active)
-    if(bothSensorsActive && magCable.getMagneticField(&x, &y, &z)) {
+    if(cableSensorActive && magCable.getMagneticField(&x, &y, &z)) {
       sumX_cable += x; sumY_cable += y; sumZ_cable += z;
       valid_cable++;
     }
@@ -275,21 +297,35 @@ void calibrateMagnetometer() {
     delay(10);
   }
 
-  if(valid_solder > 0) {
-    magCalSolder.x_neutral = sumX_solder / valid_solder;
-    magCalSolder.y_neutral = sumY_solder / valid_solder;
-    magCalSolder.z_neutral = sumZ_solder / valid_solder;
-    magCalSolder.calibrated = true;
+  // Update calibration for solder sensor
+  if (!cableSensorActive || bothSensorsActive) {
+    if(valid_solder > 0) {
+      magCalSolder.x_neutral = sumX_solder / valid_solder;
+      magCalSolder.y_neutral = sumY_solder / valid_solder;
+      magCalSolder.z_neutral = sumZ_solder / valid_solder;
+      magCalSolder.calibrated = true;
+    }
   }
   
-  if(bothSensorsActive && valid_cable > 0) {
+  // Update calibration for cable sensor
+  if(cableSensorActive && valid_cable > 0) {
     magCalCable.x_neutral = sumX_cable / valid_cable;
     magCalCable.y_neutral = sumY_cable / valid_cable;
     magCalCable.z_neutral = sumZ_cable / valid_cable;
     magCalCable.calibrated = true;
   }
   
-  if(valid_solder > 0 && (!bothSensorsActive || valid_cable > 0)) {
+  // Check if calibration succeeded
+  bool calibration_success = false;
+  if (bothSensorsActive) {
+    calibration_success = (valid_solder > 0 && valid_cable > 0);
+  } else if (cableSensorActive) {
+    calibration_success = (valid_cable > 0);
+  } else {
+    calibration_success = (valid_solder > 0);
+  }
+  
+  if(calibration_success) {
     updateHardwareLeds(0, 0, 0); delay(200);
   } else {
     for(int i=0; i<5; i++) {
@@ -397,15 +433,7 @@ void readAndSendMagnetometerData() {
   double totalMove = abs(tx) + abs(ty) + abs(tz) + abs(rx) + abs(ry) + abs(rz);
   handleLeds(totalMove);
   
-  // Apply deadzones
-  if (abs(tx) < CONFIG_DEADZONE) tx = 0.0;
-  if (abs(ty) < CONFIG_DEADZONE) ty = 0.0;
-  if (abs(tz) < CONFIG_ZOOM_DEADZONE) tz = 0.0;
-  if (abs(rx) < CONFIG_ROT_DEADZONE) rx = 0.0;
-  if (abs(ry) < CONFIG_ROT_DEADZONE) ry = 0.0;
-  if (abs(rz) < CONFIG_ROT_DEADZONE) rz = 0.0;
-  
-  // Find predominant movement
+  // Find predominant movement BEFORE applying deadzones
   double movements[6] = {abs(tx), abs(ty), abs(tz), abs(rx), abs(ry), abs(rz)};
   int maxIdx = 0;
   double maxVal = movements[0];
@@ -417,8 +445,13 @@ void readAndSendMagnetometerData() {
     }
   }
   
-  // Only send predominant movement if above threshold
-  if (maxVal < CONFIG_MIN_MOVEMENT_THRESHOLD) {
+  // Apply deadzones based on movement type
+  double* values[6] = {&tx, &ty, &tz, &rx, &ry, &rz};
+  double thresholds[6] = {CONFIG_DEADZONE, CONFIG_DEADZONE, CONFIG_ZOOM_DEADZONE, 
+                          CONFIG_ROT_DEADZONE, CONFIG_ROT_DEADZONE, CONFIG_ROT_DEADZONE};
+  
+  // Check if predominant movement is above its threshold
+  if (abs(*values[maxIdx]) < thresholds[maxIdx] || maxVal < CONFIG_MIN_MOVEMENT_THRESHOLD) {
     send_tx_rx_reports(0, 0, 0, 0, 0, 0);
     return;
   }
@@ -429,22 +462,22 @@ void readAndSendMagnetometerData() {
   
   switch (maxIdx) {
     case 0: // Tx
-      out_tx = (int16_t)(-tx * CONFIG_TRANS_SCALE);
+      out_tx = (int16_t)constrain(-tx * CONFIG_TRANS_SCALE, -32767, 32767);
       break;
     case 1: // Ty
-      out_ty = (int16_t)(-ty * CONFIG_TRANS_SCALE);
+      out_ty = (int16_t)constrain(-ty * CONFIG_TRANS_SCALE, -32767, 32767);
       break;
     case 2: // Tz
-      out_tz = (int16_t)(tz * CONFIG_ZOOM_SCALE);
+      out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE, -32767, 32767);
       break;
     case 3: // Rx
-      out_rx = (int16_t)(rx * CONFIG_ROT_SCALE);
+      out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE, -32767, 32767);
       break;
     case 4: // Ry
-      out_ry = (int16_t)(ry * CONFIG_ROT_SCALE);
+      out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE, -32767, 32767);
       break;
     case 5: // Rz
-      out_rz = (int16_t)(rz * CONFIG_ROT_SCALE);
+      out_rz = (int16_t)constrain(rz * CONFIG_ROT_SCALE, -32767, 32767);
       break;
   }
   
@@ -496,11 +529,11 @@ void readAndSendSingleMagnetometer() {
           if(abs(y) < CONFIG_DEADZONE) y = 0.0;
           if(abs(z) < CONFIG_ZOOM_DEADZONE) z = 0.0;
 
-          int16_t tx = (int16_t)(-x * CONFIG_TRANS_SCALE);
-          int16_t ty = (int16_t)(-y * CONFIG_TRANS_SCALE);
-          int16_t tz = (int16_t)(z * CONFIG_ZOOM_SCALE);
-          int16_t rx = (int16_t)(y * CONFIG_ROT_SCALE);
-          int16_t ry = (int16_t)(x * CONFIG_ROT_SCALE);
+          int16_t tx = (int16_t)constrain(-x * CONFIG_TRANS_SCALE, -32767, 32767);
+          int16_t ty = (int16_t)constrain(-y * CONFIG_TRANS_SCALE, -32767, 32767);
+          int16_t tz = (int16_t)constrain(z * CONFIG_ZOOM_SCALE, -32767, 32767);
+          int16_t rx = (int16_t)constrain(y * CONFIG_ROT_SCALE, -32767, 32767);
+          int16_t ry = (int16_t)constrain(x * CONFIG_ROT_SCALE, -32767, 32767);
           
           send_tx_rx_reports(tx, ty, tz, rx, ry, 0);
       }
