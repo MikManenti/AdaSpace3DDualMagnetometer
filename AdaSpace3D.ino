@@ -420,9 +420,11 @@ void readAndSendMagnetometerData() {
   // This creates Z-axis (vertical) field differences at the two sensor positions
   // Solder at 3 o'clock (right), Cable at 6 o'clock (bottom after transform)
   // 
-  // Fixed formulas based on user feedback (Ry was detected as Tz, Rx swapped with Ty):
-  double raw_rx = (z_cable_transformed - z_solder);  // Pitch (forward/back tilt): Z diff, cable to solder
-  double raw_ry = (z_solder - z_cable_transformed);  // Roll (left/right tilt): Z diff, solder to cable  
+  // Fixed formulas v3 (swapped Rx/Ry based on user feedback: "ry viene letto come rx"):
+  // - Pitch (Rx): Tilting forward/back affects the bottom sensor (cable at 6 o'clock) more
+  // - Roll (Ry): Tilting left/right affects the right sensor (solder at 3 o'clock) more
+  double raw_rx = (z_solder - z_cable_transformed);  // Pitch: when tilting forward, solder reads higher
+  double raw_ry = (z_cable_transformed - z_solder);  // Roll: when tilting right, cable reads higher
   double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw: XY asymmetry difference
   
   // Apply Kalman filtering

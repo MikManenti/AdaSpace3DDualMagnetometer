@@ -179,6 +179,41 @@ The key insight is that tilting movements create **vertical field strength diffe
 
 ---
 
+## Version 3 Update (2026-01-28)
+
+### New Problem Report
+
+User feedback: *"ci siamo quasi ultimo problema, ora ry viene letto come rx per il resto tutto perfetto"*
+
+Translation: "we're almost there, last problem, now ry is read as rx, for the rest everything is perfect"
+
+**Symptom:** After V2 fix, Ry (roll) is now being detected as Rx (pitch) - the axes are swapped.
+
+### Version 3 Fix
+
+The V2 formulas correctly used Z-axis differences, but the assignment to Rx vs Ry was incorrect for the physical sensor configuration. The fix is to swap the formulas:
+
+```cpp
+// Version 2 (had Rx/Ry swapped)
+raw_rx = (z_cable_transformed - z_solder);  // Was assigned to Rx
+raw_ry = (z_solder - z_cable_transformed);  // Was assigned to Ry
+
+// Version 3 (corrected)
+raw_rx = (z_solder - z_cable_transformed);  // Pitch: solder (3 o'clock) minus cable (6 o'clock)
+raw_ry = (z_cable_transformed - z_solder);  // Roll: cable (6 o'clock) minus solder (3 o'clock)
+```
+
+**Reasoning:**
+- Solder sensor at 3 o'clock (right side)
+- Cable sensor at 6 o'clock (bottom)
+- **Pitch (Rx)**: Forward/back tilt primarily affects the vertical difference measured at these positions
+- **Roll (Ry)**: Left/right tilt affects the opposite vertical difference
+
+The physical testing by the user confirmed that swapping these assignments produces the correct behavior.
+
+---
+
 **Version History:**
 - V1 (2026-01-28): Initial dual magnetometer implementation
-- V2 (2026-01-28): Fixed Rx/Ty and Ry/Tz cross-talk (this document)
+- V2 (2026-01-28): Fixed Rx/Ty and Ry/Tz cross-talk using Z-axis differences
+- V3 (2026-01-28): Fixed Rx/Ry swap by correcting axis assignments

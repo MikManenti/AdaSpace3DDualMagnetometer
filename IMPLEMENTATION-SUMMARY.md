@@ -79,14 +79,17 @@ Ty = (Y_solder + Y'_cable) / 2
 Tz = (Z_solder + Z'_cable) / 2
 ```
 
-**Rotation (differential) - Version 2:**
+**Rotation (differential) - Version 3:**
 ```
-Rx = Z'_cable - Z_solder          // Pitch (fixed: was using Y axis)
-Ry = Z_solder - Z'_cable          // Roll (fixed: was using X axis)
+Rx = Z_solder - Z'_cable           // Pitch (v3: swapped with Ry)
+Ry = Z'_cable - Z_solder           // Roll (v3: swapped with Rx)
 Rz = (X_solder - Y_solder) - (X'_cable - Y'_cable)  // Yaw
 ```
 
-**Note**: Version 2 formulas fix cross-talk where Ry was detected as Tz and Rx was swapped with Ty. The key insight is that rotation causes vertical (Z-axis) field differences at spatially separated sensors.
+**Note**: 
+- Version 3 fixes Rx/Ry swap (user reported: "ry viene letto come rx")
+- Version 2 fixed cross-talk where Ry was detected as Tz and Rx was swapped with Ty
+- The key insight is that rotation causes vertical (Z-axis) field differences at spatially separated sensors
 
 ### Kalman Filter
 

@@ -67,9 +67,9 @@ The firmware combines data from both sensors using different strategies:
 - Leverages the spatial separation (90° apart) to detect rotation
 - When the knob tilts, the magnet moves closer to one sensor and farther from the other
 - This creates vertical (Z-axis) magnetic field differences
-- Revised formulas (v2):
-  - `Rx = Z_cable - Z_solder` (pitch - forward/back tilt)
-  - `Ry = Z_solder - Z_cable` (roll - left/right tilt)
+- Revised formulas (v3 - swapped Rx/Ry):
+  - `Rx = Z_solder - Z_cable` (pitch - forward/back tilt)
+  - `Ry = Z_cable - Z_solder` (roll - left/right tilt)
   - `Rz = (X_solder - Y_solder) - (X_cable - Y_cable)` (yaw - twist)
 
 ### 4. Kalman Filtering
@@ -199,15 +199,19 @@ The rotation calculations can be modified if your sensor placement differs:
 // These formulas assume:
 // - Solder sensor at 3 o'clock (0°)
 // - Cable sensor at 6 o'clock (90° clockwise)
-// Updated formulas (v2) to fix Rx/Ty and Ry/Tz cross-talk:
-double raw_rx = (z_cable_transformed - z_solder);  // Pitch
-double raw_ry = (z_solder - z_cable_transformed);  // Roll  
+// Updated formulas (v3) with Rx/Ry swapped:
+double raw_rx = (z_solder - z_cable_transformed);  // Pitch
+double raw_ry = (z_cable_transformed - z_solder);  // Roll  
 double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw
 ```
 
 Adjust based on your physical configuration.
 
 ## Changelog
+
+**Version 3 (2026-01-28)**:
+- Fixed Rx/Ry swap issue - roll and pitch axes were inverted
+- Swapped the Z-axis difference formulas for Rx and Ry
 
 **Version 2 (2026-01-28)**:
 - Fixed cross-talk issue where Ry was detected as Tz and Rx was swapped with Ty
