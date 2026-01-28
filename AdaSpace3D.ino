@@ -485,48 +485,61 @@ void readAndSendMagnetometerData() {
     return;
   }
   
-  // Scale and send only predominant movement
+  // Hybrid movement mode (v6):
+  // - If Rx or Ry is dominant → send ONLY that axis (needs isolation due to context-aware detection)
+  // - If other axis is dominant → send all axes above threshold (allows natural combined movements)
+  bool rxOrRyDominant = (maxIdx == 3 || maxIdx == 4);  // Rx=3, Ry=4
+  
+  // Scale and send movements
   // Apply asymmetric scaling to compensate for non-linear magnetic field
   int16_t out_tx = 0, out_ty = 0, out_tz = 0;
   int16_t out_rx = 0, out_ry = 0, out_rz = 0;
   
-  switch (maxIdx) {
-    case 0: // Tx
-      out_tx = (int16_t)constrain(-tx * CONFIG_TRANS_SCALE, -32767, 32767);
-      break;
-    case 1: // Ty
-      out_ty = (int16_t)constrain(-ty * CONFIG_TRANS_SCALE, -32767, 32767);
-      break;
-    case 2: // Tz - asymmetric scaling
-      if (tz >= 0) {
-        // Positive (up/closer) - use positive multiplier
-        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
-      } else {
-        // Negative (down/farther) - use negative multiplier
-        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
-      }
-      break;
-    case 3: // Rx - asymmetric scaling
+  if (rxOrRyDominant) {
+    // Rx or Ry is dominant - send ONLY that axis (strict single-axis mode)
+    if (maxIdx == 3) {
+      // Rx - asymmetric scaling
       if (rx >= 0) {
-        // Positive (forward/farther) - use positive multiplier
         out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_POSITIVE_MULT, -32767, 32767);
       } else {
-        // Negative (backward/closer) - use negative multiplier
         out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_NEGATIVE_MULT, -32767, 32767);
       }
-      break;
-    case 4: // Ry - asymmetric scaling
+    } else if (maxIdx == 4) {
+      // Ry - asymmetric scaling
       if (ry >= 0) {
-        // Positive (left/farther) - use positive multiplier
         out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_POSITIVE_MULT, -32767, 32767);
       } else {
-        // Negative (right/closer) - use negative multiplier
         out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_NEGATIVE_MULT, -32767, 32767);
       }
-      break;
-    case 5: // Rz
+    }
+  } else {
+    // Other axis is dominant - send all axes above threshold (multi-axis mode)
+    // Tx
+    if (abs(tx) >= CONFIG_DEADZONE) {
+      out_tx = (int16_t)constrain(-tx * CONFIG_TRANS_SCALE, -32767, 32767);
+    }
+    
+    // Ty
+    if (abs(ty) >= CONFIG_DEADZONE) {
+      out_ty = (int16_t)constrain(-ty * CONFIG_TRANS_SCALE, -32767, 32767);
+    }
+    
+    // Tz - asymmetric scaling
+    if (abs(tz) >= CONFIG_ZOOM_DEADZONE) {
+      if (tz >= 0) {
+        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
+      } else {
+        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
+      }
+    }
+    
+    // Rz
+    if (abs(rz) >= CONFIG_ROT_DEADZONE) {
       out_rz = (int16_t)constrain(rz * CONFIG_ROT_SCALE, -32767, 32767);
-      break;
+    }
+    
+    // Note: Rx and Ry are NOT sent when another axis is dominant
+    // This maintains proper separation of pitch/roll from other movements
   }
   
   send_tx_rx_reports(out_tx, out_ty, out_tz, out_rx, out_ry, out_rz);
