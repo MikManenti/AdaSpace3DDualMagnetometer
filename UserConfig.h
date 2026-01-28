@@ -41,7 +41,12 @@
 
 // DEADZONES: Keep small (1.0) because raw values are tiny
 #define CONFIG_DEADZONE        1.0    
-#define CONFIG_ZOOM_DEADZONE   2.5  
+#define CONFIG_ZOOM_DEADZONE   2.5
+#define CONFIG_ROT_DEADZONE    1.5
+
+// Minimum movement threshold for dual sensor mode
+// This determines the minimum movement value to be considered significant
+#define CONFIG_MIN_MOVEMENT_THRESHOLD  0.5
 
 // --- USB IDENTIFICATION ---
 // 0x046d / 0xc626 = SpaceNavigator (Best for DIY compatibility)
