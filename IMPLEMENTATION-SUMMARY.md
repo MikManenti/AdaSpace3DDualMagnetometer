@@ -143,12 +143,49 @@ Implements standard 1D Kalman filter:
 2. Test calibration with different rest positions
 3. Verify calibration failure handling
 
+## Version History
+
+### Version 5 - Asymmetric Scaling (2026-01-28)
+
+**Problem**: Movements where magnets move away from sensors (Rx forward, Ry left, Tz down) were slower than opposite movements due to non-linear magnetic field strength vs. distance.
+
+**Solution**: Added directional scaling multipliers that apply different sensitivity based on movement sign:
+
+```cpp
+// UserConfig.h - New parameters
+#define CONFIG_RX_POSITIVE_MULT  1.5   // Boost for Rx forward
+#define CONFIG_RX_NEGATIVE_MULT  1.0   // Normal for Rx backward
+#define CONFIG_RY_POSITIVE_MULT  1.5   // Boost for Ry left
+#define CONFIG_RY_NEGATIVE_MULT  1.0   // Normal for Ry right
+#define CONFIG_TZ_POSITIVE_MULT  1.0   // Normal for Tz up
+#define CONFIG_TZ_NEGATIVE_MULT  1.5   // Boost for Tz down
+```
+
+**Implementation**: Modified scaling logic to check sign of movement before applying scale factor. Default 1.5x boost for "away" directions compensates for weaker signal at greater distances.
+
+### Version 4 - Context-Aware Rotation
+
+Redesigned rotation detection to evaluate which sensor varies MORE, eliminating Rx/Ry ambiguity.
+
+### Version 3 - Axis Assignment Fix
+
+Corrected Rx/Ry axis assignments after user testing revealed they were swapped.
+
+### Version 2 - Z-Axis Differential
+
+Changed rotation detection from XY-plane to Z-axis differences, eliminating translation/rotation cross-talk.
+
+### Version 1 - Initial Implementation
+
+Basic dual magnetometer support with sensor fusion and Kalman filtering.
+
 ## Backward Compatibility
 
 The firmware maintains full backward compatibility:
 - Single sensor mode works identically to original firmware
 - Configuration parameters have sensible defaults
 - No breaking changes to existing hardware setups
+- Asymmetric multipliers default to 1.5x/1.0x which can be adjusted or disabled (set all to 1.0)
 
 ## Future Enhancements (Optional)
 

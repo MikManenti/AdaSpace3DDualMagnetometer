@@ -486,6 +486,7 @@ void readAndSendMagnetometerData() {
   }
   
   // Scale and send only predominant movement
+  // Apply asymmetric scaling to compensate for non-linear magnetic field
   int16_t out_tx = 0, out_ty = 0, out_tz = 0;
   int16_t out_rx = 0, out_ry = 0, out_rz = 0;
   
@@ -496,14 +497,32 @@ void readAndSendMagnetometerData() {
     case 1: // Ty
       out_ty = (int16_t)constrain(-ty * CONFIG_TRANS_SCALE, -32767, 32767);
       break;
-    case 2: // Tz
-      out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE, -32767, 32767);
+    case 2: // Tz - asymmetric scaling
+      if (tz >= 0) {
+        // Positive (up/closer) - use positive multiplier
+        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (down/farther) - use negative multiplier
+        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
+      }
       break;
-    case 3: // Rx
-      out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE, -32767, 32767);
+    case 3: // Rx - asymmetric scaling
+      if (rx >= 0) {
+        // Positive (forward/farther) - use positive multiplier
+        out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (backward/closer) - use negative multiplier
+        out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_NEGATIVE_MULT, -32767, 32767);
+      }
       break;
-    case 4: // Ry
-      out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE, -32767, 32767);
+    case 4: // Ry - asymmetric scaling
+      if (ry >= 0) {
+        // Positive (left/farther) - use positive multiplier
+        out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (right/closer) - use negative multiplier
+        out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_NEGATIVE_MULT, -32767, 32767);
+      }
       break;
     case 5: // Rz
       out_rz = (int16_t)constrain(rz * CONFIG_ROT_SCALE, -32767, 32767);

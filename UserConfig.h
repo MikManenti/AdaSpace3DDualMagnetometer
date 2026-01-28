@@ -39,6 +39,17 @@
 #define CONFIG_ZOOM_SCALE      50  
 #define CONFIG_ROT_SCALE       40 
 
+// Asymmetric scaling multipliers (compensate for non-linear magnetic field)
+// When magnets move AWAY from sensors, signal is weaker - these multipliers compensate
+// Values > 1.0 increase sensitivity for that direction
+// Set both to 1.0 for symmetric scaling
+#define CONFIG_RX_POSITIVE_MULT  1.5   // Rx forward (magnet away) - typically needs boost
+#define CONFIG_RX_NEGATIVE_MULT  1.0   // Rx backward (magnet closer)
+#define CONFIG_RY_POSITIVE_MULT  1.5   // Ry left (magnet away) - typically needs boost
+#define CONFIG_RY_NEGATIVE_MULT  1.0   // Ry right (magnet closer)
+#define CONFIG_TZ_POSITIVE_MULT  1.0   // Tz up (magnet closer)
+#define CONFIG_TZ_NEGATIVE_MULT  1.5   // Tz down (magnet away) - typically needs boost
+
 // DEADZONES: Keep small (1.0) because raw values are tiny
 // These values filter out sensor noise and unintended micro-movements
 #define CONFIG_DEADZONE        1.0    // X/Y translation deadzone

@@ -112,6 +112,22 @@ All parameters can be adjusted in `UserConfig.h`:
 - **Higher values** = More sensitive (larger movements in software)
 - **Lower values** = Less sensitive (smaller movements in software)
 
+### Asymmetric Scaling (New in v5)
+```cpp
+#define CONFIG_RX_POSITIVE_MULT  1.5   // Rx forward (magnet away)
+#define CONFIG_RX_NEGATIVE_MULT  1.0   // Rx backward (magnet closer)
+#define CONFIG_RY_POSITIVE_MULT  1.5   // Ry left (magnet away)
+#define CONFIG_RY_NEGATIVE_MULT  1.0   // Ry right (magnet closer)
+#define CONFIG_TZ_POSITIVE_MULT  1.0   // Tz up (magnet closer)
+#define CONFIG_TZ_NEGATIVE_MULT  1.5   // Tz down (magnet away)
+```
+- Compensates for non-linear magnetic field strength vs. distance
+- When magnets move **away** from sensors, signal is weaker → use higher multiplier
+- When magnets move **closer** to sensors, signal is stronger → use lower multiplier
+- **Default 1.5x boost** for "away" movements, 1.0x for "closer" movements
+- Set both to 1.0 for symmetric scaling (disable feature)
+- Adjust based on your specific hardware and magnet distances
+
 ### Deadzones
 ```cpp
 #define CONFIG_DEADZONE        1.0   // X/Y translation deadzone
@@ -153,6 +169,14 @@ All parameters can be adjusted in `UserConfig.h`:
 - Increase scale values
 - Lower deadzones
 - Lower `CONFIG_MIN_MOVEMENT_THRESHOLD`
+
+### Issue: Movements in one direction are slower than the opposite direction
+**Solution** (New in v5):
+- Adjust asymmetric scaling multipliers
+- Increase the multiplier for the slower direction
+- Example: If Rx forward is slow, increase `CONFIG_RX_POSITIVE_MULT` (try 1.8 or 2.0)
+- If Tz down is slow, increase `CONFIG_TZ_NEGATIVE_MULT`
+- Fine-tune values in 0.1 increments until movements feel balanced
 
 ### Issue: Rx and Ry are still interfering with each other
 **Solution**:
@@ -238,6 +262,14 @@ else {
 Adjust based on your physical configuration.
 
 ## Changelog
+
+**Version 5 (2026-01-28)**:
+- Added asymmetric scaling multipliers for directional movements
+- Compensates for non-linear magnetic field (weaker when magnet is farther)
+- Six new configuration parameters: `CONFIG_RX_POSITIVE_MULT`, `CONFIG_RX_NEGATIVE_MULT`, etc.
+- Default 1.5x boost for "away" movements (Rx forward, Ry left, Tz down)
+- Separately tunable for each axis and direction
+- Fixes issue where movements away from sensors were slower
 
 **Version 4 (2026-01-28)**:
 - Completely redesigned rotation detection logic based on user feedback
