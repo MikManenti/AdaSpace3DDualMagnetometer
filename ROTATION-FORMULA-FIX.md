@@ -213,7 +213,77 @@ The physical testing by the user confirmed that swapping these assignments produ
 
 ---
 
+## Version 4 Update (2026-01-28)
+
+### New Problem Report
+
+User feedback: *"abbiamo ancora lo stesso problema, ma secondo me è la logica, addesso calcolcoliamo rx ed ry allo stesso modo cioè per differenza di dati, ma non diamo contesto a questa differenza, mentre invece dovremmo valutare quale sensore ha la variazione più alta(di molto più alta per non interferire con gli altri assi), e a seconda di questo scegliere se rx o ry"*
+
+Translation: "we still have the same problem, but in my opinion it's the logic, now we calculate rx and ry in the same way i.e. by data difference, but we don't give context to this difference, whereas instead we should evaluate which sensor has the highest variation (much higher so as not to interfere with other axes), and based on this choose whether rx or ry"
+
+**Key Insight**: The user correctly identified that v2 and v3 formulas were just negatives of each other:
+```cpp
+// V3 (problematic)
+raw_rx = (z_solder - z_cable_transformed);  // Always same magnitude
+raw_ry = (z_cable_transformed - z_solder);  // Just negative of rx
+```
+
+Both formulas have the same magnitude, providing no context about which sensor is actually varying MORE.
+
+### Version 4 Fix - Context-Aware Logic
+
+The solution is to evaluate which individual sensor shows MORE variation:
+
+```cpp
+// Version 4 - Context-aware rotation detection
+double z_solder_abs = abs(z_solder);  // Absolute deviation from neutral
+double z_cable_abs = abs(z_cable_transformed);
+
+if (z_cable_abs > z_solder_abs * CONFIG_ROTATION_AXIS_RATIO) {
+  // Cable sensor (bottom) varies significantly MORE → Pitch (Rx)
+  raw_rx = z_cable_transformed;
+  raw_ry = 0.0;  // Suppress roll
+} 
+else if (z_solder_abs > z_cable_abs * CONFIG_ROTATION_AXIS_RATIO) {
+  // Solder sensor (right) varies significantly MORE → Roll (Ry)
+  raw_rx = 0.0;  // Suppress pitch
+  raw_ry = z_solder;
+}
+else {
+  // Both sensors vary similarly - ambiguous case
+  raw_rx = (z_solder - z_cable_transformed) * 0.5;
+  raw_ry = (z_cable_transformed - z_solder) * 0.5;
+}
+```
+
+**Key Changes**:
+1. **Evaluate individual sensor variations** (not just difference)
+2. **Determine dominant sensor** using ratio threshold (default 1.3 = 30% more)
+3. **Assign to appropriate axis** based on which sensor varies more
+4. **Suppress other axis** to prevent cross-talk
+5. **Fallback to differential** for ambiguous cases with reduced sensitivity
+
+**Why This Works**:
+- When tilting forward/back (pitch), the bottom sensor (cable at 6 o'clock) sees more field change
+- When tilting left/right (roll), the right sensor (solder at 3 o'clock) sees more field change
+- The ratio threshold ensures one sensor must vary significantly more (prevents false detections)
+- Suppressing the other axis eliminates cross-talk between Rx and Ry
+- The ambiguous case handles diagonal movements gracefully
+
+**Configuration**:
+```cpp
+// UserConfig.h
+#define CONFIG_ROTATION_AXIS_RATIO  1.3  // One sensor must vary 30% more
+```
+
+Users can tune this ratio:
+- Higher (e.g., 1.5): Stricter separation, less cross-talk
+- Lower (e.g., 1.2): More sensitive, catches mixed movements
+
+---
+
 **Version History:**
 - V1 (2026-01-28): Initial dual magnetometer implementation
 - V2 (2026-01-28): Fixed Rx/Ty and Ry/Tz cross-talk using Z-axis differences
 - V3 (2026-01-28): Fixed Rx/Ry swap by correcting axis assignments
+- V4 (2026-01-28): Redesigned logic to evaluate which sensor varies MORE (context-aware detection)

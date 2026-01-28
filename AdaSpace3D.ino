@@ -415,16 +415,39 @@ void readAndSendMagnetometerData() {
   double raw_ty = (y_solder + y_cable_transformed) / 2.0;
   double raw_tz = (z_solder + z_cable_transformed) / 2.0;
   
-  // Rotation: differential measurements between sensors
-  // Key insight: When knob tilts, the magnet moves closer to one sensor and farther from the other
-  // This creates Z-axis (vertical) field differences at the two sensor positions
+  // Rotation: Context-aware differential measurements (Version 4)
+  // Key insight: After calibration, z_solder and z_cable_transformed are deviations from neutral
+  // When knob tilts, ONE sensor shows significantly more Z-axis change than the other
   // Solder at 3 o'clock (right), Cable at 6 o'clock (bottom after transform)
   // 
-  // Fixed formulas v3 (swapped Rx/Ry based on user feedback: "ry viene letto come rx"):
-  // - Pitch (Rx): Tilting forward/back affects the bottom sensor (cable at 6 o'clock) more
-  // - Roll (Ry): Tilting left/right affects the right sensor (solder at 3 o'clock) more
-  double raw_rx = (z_solder - z_cable_transformed);  // Pitch: when tilting forward, solder reads higher
-  double raw_ry = (z_cable_transformed - z_solder);  // Roll: when tilting right, cable reads higher
+  // New approach based on user feedback: evaluate which sensor varies more
+  // - If cable (bottom) varies more → Pitch (Rx) - forward/back tilt
+  // - If solder (right) varies more → Roll (Ry) - left/right tilt
+  
+  double z_solder_abs = abs(z_solder);
+  double z_cable_abs = abs(z_cable_transformed);
+  
+  // Determine which sensor shows more variation and assign to appropriate axis
+  double raw_rx = 0.0;
+  double raw_ry = 0.0;
+  
+  if (z_cable_abs > z_solder_abs * CONFIG_ROTATION_AXIS_RATIO) {
+    // Cable sensor (bottom) varies significantly more → Pitch (forward/back tilt)
+    raw_rx = z_cable_transformed;  // Use cable's Z deviation for pitch
+    raw_ry = 0.0;  // Suppress roll
+  } 
+  else if (z_solder_abs > z_cable_abs * CONFIG_ROTATION_AXIS_RATIO) {
+    // Solder sensor (right) varies significantly more → Roll (left/right tilt)
+    raw_rx = 0.0;  // Suppress pitch
+    raw_ry = z_solder;  // Use solder's Z deviation for roll
+  }
+  else {
+    // Both sensors vary similarly - use differential (ambiguous case)
+    // This maintains some response when movement is not clearly pitch or roll
+    raw_rx = (z_solder - z_cable_transformed) * 0.5;  // Reduced sensitivity for ambiguous case
+    raw_ry = (z_cable_transformed - z_solder) * 0.5;
+  }
+  
   double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw: XY asymmetry difference
   
   // Apply Kalman filtering

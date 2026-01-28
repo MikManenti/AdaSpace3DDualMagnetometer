@@ -51,6 +51,14 @@
 // Adjust based on your physical setup and magnet distances (7-8mm default)
 #define CONFIG_MIN_MOVEMENT_THRESHOLD  0.5
 
+// Rotation axis discrimination threshold (dual sensor mode)
+// Determines how much more one sensor must vary than the other to be considered
+// the dominant axis (Rx vs Ry discrimination)
+// 1.3 = sensor must vary 30% more than the other
+// Higher values = stricter separation (less cross-talk but may miss mixed movements)
+// Lower values = more sensitive (catches mixed movements but more cross-talk)
+#define CONFIG_ROTATION_AXIS_RATIO  1.3
+
 // --- USB IDENTIFICATION ---
 // 0x046d / 0xc626 = SpaceNavigator (Best for DIY compatibility)
 #define USB_VID             0x256f

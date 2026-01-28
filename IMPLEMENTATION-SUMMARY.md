@@ -79,17 +79,32 @@ Ty = (Y_solder + Y'_cable) / 2
 Tz = (Z_solder + Z'_cable) / 2
 ```
 
-**Rotation (differential) - Version 3:**
+**Rotation (context-aware) - Version 4:**
 ```
-Rx = Z_solder - Z'_cable           // Pitch (v3: swapped with Ry)
-Ry = Z'_cable - Z_solder           // Roll (v3: swapped with Rx)
-Rz = (X_solder - Y_solder) - (X'_cable - Y'_cable)  // Yaw
+// Evaluate which sensor varies MORE (not just difference)
+z_solder_abs = |Z_solder|
+z_cable_abs = |Z'_cable|
+
+if z_cable_abs > z_solder_abs × RATIO:
+    Rx = Z'_cable    // Cable varies more → Pitch
+    Ry = 0
+elif z_solder_abs > z_cable_abs × RATIO:
+    Rx = 0
+    Ry = Z_solder    // Solder varies more → Roll
+else:
+    Rx = (Z_solder - Z'_cable) × 0.5    // Ambiguous case
+    Ry = (Z'_cable - Z_solder) × 0.5
+
+Rz = (X_solder - Y_solder) - (X'_cable - Y'_cable)  // Yaw (unchanged)
 ```
 
 **Note**: 
-- Version 3 fixes Rx/Ry swap (user reported: "ry viene letto come rx")
+- Version 4 redesigns rotation logic based on user insight: "dovremmo valutare quale sensore ha la variazione più alta"
+- Now looks at which individual sensor varies MORE, not just the difference between them
+- Eliminates ambiguity by assigning movement to the axis whose sensor shows dominant change
+- Configurable ratio threshold (default 1.3 = 30% more variation required)
+- Version 3 fixed Rx/Ry swap
 - Version 2 fixed cross-talk where Ry was detected as Tz and Rx was swapped with Ty
-- The key insight is that rotation causes vertical (Z-axis) field differences at spatially separated sensors
 
 ### Kalman Filter
 

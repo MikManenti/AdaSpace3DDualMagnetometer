@@ -63,14 +63,16 @@ The firmware combines data from both sensors using different strategies:
 - Formula: `T = (Sensor1 + Sensor2_transformed) / 2`
 
 **Rotation (Rx, Ry, Rz)**:
-- Calculated from differential measurements between sensors
+- Calculated using context-aware differential measurements (v4)
 - Leverages the spatial separation (90° apart) to detect rotation
 - When the knob tilts, the magnet moves closer to one sensor and farther from the other
 - This creates vertical (Z-axis) magnetic field differences
-- Revised formulas (v3 - swapped Rx/Ry):
-  - `Rx = Z_solder - Z_cable` (pitch - forward/back tilt)
-  - `Ry = Z_cable - Z_solder` (roll - left/right tilt)
-  - `Rz = (X_solder - Y_solder) - (X_cable - Y_cable)` (yaw - twist)
+- **New approach (v4)**: Evaluates which sensor varies MORE
+  - If cable sensor (bottom at 6 o'clock) varies significantly more → **Pitch (Rx)**
+  - If solder sensor (right at 3 o'clock) varies significantly more → **Roll (Ry)**
+  - Uses configurable ratio threshold (default 1.3 = 30% more variation required)
+  - This prevents ambiguity and cross-talk between rotation axes
+  - `Rz = (X_solder - Y_solder) - (X_cable - Y_cable)` (yaw - twist, unchanged)
 
 ### 4. Kalman Filtering
 
@@ -129,6 +131,16 @@ All parameters can be adjusted in `UserConfig.h`:
 - Prevents sending tiny movements caused by electrical noise
 - Adjust based on your physical setup
 
+### Rotation Axis Discrimination (New in v4)
+```cpp
+#define CONFIG_ROTATION_AXIS_RATIO  1.3
+```
+- Controls how much more one sensor must vary than the other for Rx/Ry determination
+- Value of 1.3 means one sensor must vary 30% more than the other
+- **Higher values** (e.g., 1.5) = Stricter separation, less cross-talk between Rx/Ry
+- **Lower values** (e.g., 1.2) = More sensitive, catches mixed movements but may have cross-talk
+- Recommended range: 1.2 to 1.5
+
 ## Troubleshooting
 
 ### Issue: Movements are too sensitive
@@ -141,6 +153,11 @@ All parameters can be adjusted in `UserConfig.h`:
 - Increase scale values
 - Lower deadzones
 - Lower `CONFIG_MIN_MOVEMENT_THRESHOLD`
+
+### Issue: Rx and Ry are still interfering with each other
+**Solution**:
+- Increase `CONFIG_ROTATION_AXIS_RATIO` (e.g., to 1.5 or 1.6)
+- This makes the system require a stronger difference before assigning to one axis
 
 ### Issue: Jittery or noisy movements
 **Solution**:
@@ -196,18 +213,39 @@ struct KalmanFilter {
 The rotation calculations can be modified if your sensor placement differs:
 
 ```cpp
-// These formulas assume:
-// - Solder sensor at 3 o'clock (0°)
-// - Cable sensor at 6 o'clock (90° clockwise)
-// Updated formulas (v3) with Rx/Ry swapped:
-double raw_rx = (z_solder - z_cable_transformed);  // Pitch
-double raw_ry = (z_cable_transformed - z_solder);  // Roll  
-double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw
+// Version 4 - Context-aware rotation detection
+// Evaluates which sensor varies MORE and assigns to appropriate axis
+double z_solder_abs = abs(z_solder);
+double z_cable_abs = abs(z_cable_transformed);
+
+if (z_cable_abs > z_solder_abs * CONFIG_ROTATION_AXIS_RATIO) {
+  // Cable (bottom) varies more → Pitch
+  raw_rx = z_cable_transformed;
+  raw_ry = 0.0;
+} 
+else if (z_solder_abs > z_cable_abs * CONFIG_ROTATION_AXIS_RATIO) {
+  // Solder (right) varies more → Roll
+  raw_rx = 0.0;
+  raw_ry = z_solder;
+}
+else {
+  // Ambiguous - use differential with reduced sensitivity
+  raw_rx = (z_solder - z_cable_transformed) * 0.5;
+  raw_ry = (z_cable_transformed - z_solder) * 0.5;
+}
 ```
 
 Adjust based on your physical configuration.
 
 ## Changelog
+
+**Version 4 (2026-01-28)**:
+- Completely redesigned rotation detection logic based on user feedback
+- Now evaluates which sensor shows MORE variation (not just difference)
+- Assigns movement to Rx or Ry based on which sensor varies significantly more
+- Added `CONFIG_ROTATION_AXIS_RATIO` parameter for tuning (default 1.3)
+- Eliminates ambiguity between pitch and roll movements
+- Fallback to differential method when both sensors vary similarly
 
 **Version 3 (2026-01-28)**:
 - Fixed Rx/Ry swap issue - roll and pitch axes were inverted
