@@ -410,16 +410,20 @@ void readAndSendMagnetometerData() {
   double z_cable_transformed = z_cable;
   
   // Calculate 6 DOF from dual sensor fusion
-  // Translation: average of both sensors
+  // Translation: average of both sensors for linear movement
   double raw_tx = (x_solder + x_cable_transformed) / 2.0;
   double raw_ty = (y_solder + y_cable_transformed) / 2.0;
   double raw_tz = (z_solder + z_cable_transformed) / 2.0;
   
-  // Rotation: difference between sensors (differential measurements)
-  // Cable is at 6 o'clock, Solder at 3 o'clock
-  double raw_rx = (y_solder - y_cable_transformed);  // Pitch (rotation around X)
-  double raw_ry = (x_cable_transformed - x_solder);  // Roll (rotation around Y)
-  double raw_rz = (x_solder + y_cable_transformed) - (x_cable_transformed + y_solder);  // Yaw (rotation around Z)
+  // Rotation: differential measurements between sensors
+  // Key insight: When knob tilts, the magnet moves closer to one sensor and farther from the other
+  // This creates Z-axis (vertical) field differences at the two sensor positions
+  // Solder at 3 o'clock (right), Cable at 6 o'clock (bottom after transform)
+  // 
+  // Fixed formulas based on user feedback (Ry was detected as Tz, Rx swapped with Ty):
+  double raw_rx = (z_cable_transformed - z_solder);  // Pitch (forward/back tilt): Z diff, cable to solder
+  double raw_ry = (z_solder - z_cable_transformed);  // Roll (left/right tilt): Z diff, solder to cable  
+  double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw: XY asymmetry difference
   
   // Apply Kalman filtering
   double tx = kalman_tx.update(raw_tx);

@@ -65,9 +65,12 @@ The firmware combines data from both sensors using different strategies:
 **Rotation (Rx, Ry, Rz)**:
 - Calculated from differential measurements between sensors
 - Leverages the spatial separation (90° apart) to detect rotation
-- Formula examples:
-  - `Rx = Sensor1_y - Sensor2_y_transformed` (pitch)
-  - `Ry = Sensor2_x_transformed - Sensor1_x` (roll)
+- When the knob tilts, the magnet moves closer to one sensor and farther from the other
+- This creates vertical (Z-axis) magnetic field differences
+- Revised formulas (v2):
+  - `Rx = Z_cable - Z_solder` (pitch - forward/back tilt)
+  - `Ry = Z_solder - Z_cable` (roll - left/right tilt)
+  - `Rz = (X_solder - Y_solder) - (X_cable - Y_cable)` (yaw - twist)
 
 ### 4. Kalman Filtering
 
@@ -196,12 +199,20 @@ The rotation calculations can be modified if your sensor placement differs:
 // These formulas assume:
 // - Solder sensor at 3 o'clock (0°)
 // - Cable sensor at 6 o'clock (90° clockwise)
-double raw_rx = (y_solder - y_cable_transformed);  
-double raw_ry = (x_cable_transformed - x_solder);  
-double raw_rz = (x_solder + y_cable_transformed) - (x_cable_transformed + y_solder);
+// Updated formulas (v2) to fix Rx/Ty and Ry/Tz cross-talk:
+double raw_rx = (z_cable_transformed - z_solder);  // Pitch
+double raw_ry = (z_solder - z_cable_transformed);  // Roll  
+double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw
 ```
 
 Adjust based on your physical configuration.
+
+## Changelog
+
+**Version 2 (2026-01-28)**:
+- Fixed cross-talk issue where Ry was detected as Tz and Rx was swapped with Ty
+- Revised rotation formulas to use Z-axis differences instead of XY plane differences
+- Improved separation between rotational and translational movements
 
 ## Benefits of Dual Magnetometer Setup
 
