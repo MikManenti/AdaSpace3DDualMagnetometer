@@ -82,33 +82,22 @@ Each of the 6 DOF has its own Kalman filter that:
 - Improves overall precision
 - Parameters can be tuned in the code if needed
 
-### 5. Hybrid Movement Mode (New in v6)
+### 5. Predominant Movement Detection
 
-The firmware uses a **smart hybrid approach** for sending movements:
-
-**When Rx or Ry is dominant:**
-- Sends **ONLY** that axis (strict single-axis mode)
-- Required for proper pitch/roll separation
-- Prevents interference with context-aware rotation detection
-
-**When other axes are dominant (Tx, Ty, Tz, Rz):**
-- Sends **all axes above threshold** simultaneously
-- Enables natural combined movements (e.g., translate while zooming)
-- More intuitive control for navigation
+The firmware identifies which movement is strongest and sends **only that movement** via HID:
 
 ```cpp
-// Example behavior
-if (Rx is strongest) {
-    send_to_HID(tx=0, ty=0, tz=0, rx=value, ry=0, rz=0)  // Only Rx
-}
-else if (Tx is strongest but Ty and Tz also active) {
-    send_to_HID(tx=value1, ty=value2, tz=value3, rx=0, ry=0, rz=value4)  // Multi-axis
+// Find the axis with maximum absolute value
+movements[] = {|Tx|, |Ty|, |Tz|, |Rx|, |Ry|, |Rz|}
+predominant = argmax(movements)
+
+// Send only predominant movement
+if (predominant == Tx) {
+    send_to_HID(tx=value, ty=0, tz=0, rx=0, ry=0, rz=0)
 }
 ```
 
-This provides the best of both worlds:
-- Strict control when needed (Rx/Ry)
-- Natural fluid movement when possible (translations + yaw)
+This eliminates cross-talk and provides clean, separated movements.
 
 ## Configuration Parameters
 
@@ -273,14 +262,6 @@ else {
 Adjust based on your physical configuration.
 
 ## Changelog
-
-**Version 6 (2026-01-28)**:
-- Implemented hybrid movement mode for better control
-- When Rx or Ry is dominant → sends ONLY that axis (maintains pitch/roll isolation)
-- When other axes are dominant → sends all axes above threshold simultaneously
-- Enables natural combined movements (e.g., translate + zoom, translate + yaw)
-- Preserves strict single-axis behavior where needed for Rx/Ry
-- More intuitive and fluid control while maintaining axis separation
 
 **Version 5 (2026-01-28)**:
 - Added asymmetric scaling multipliers for directional movements

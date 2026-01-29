@@ -145,34 +145,6 @@ Implements standard 1D Kalman filter:
 
 ## Version History
 
-### Version 6 - Hybrid Movement Mode (2026-01-28)
-
-**Problem**: Pure single-axis mode (sending only predominant movement) worked well but felt limiting for combined movements like translating while zooming.
-
-**User Request**: "Let's try to send only RX or RY when they are the dominant axes, and instead allow all other axes to communicate simultaneously when RX and RY are not dominant."
-
-**Solution**: Implemented hybrid movement mode with smart axis handling:
-
-```cpp
-// Check if Rx or Ry is dominant
-bool rxOrRyDominant = (maxIdx == 3 || maxIdx == 4);
-
-if (rxOrRyDominant) {
-  // Send ONLY Rx or Ry (strict single-axis mode)
-  // Required for context-aware rotation detection
-}
-else {
-  // Send all axes above threshold (multi-axis mode)
-  // Enables natural combined movements
-}
-```
-
-**Benefits**:
-- Maintains strict pitch/roll isolation when needed
-- Enables fluid combined movements for translation + zoom + yaw
-- More intuitive control in 3D applications
-- No compromise on Rx/Ry separation quality
-
 ### Version 5 - Asymmetric Scaling (2026-01-28)
 
 **Problem**: Movements where magnets move away from sensors (Rx forward, Ry left, Tz down) were slower than opposite movements due to non-linear magnetic field strength vs. distance.
