@@ -1,7 +1,19 @@
 /*
- * AdaSpace3D - Unified Firmware (Golden Release)
- * * Features: Dual LED Drive, Reactive Lighting, Auto-Hardware Detect
+ * AdaSpace3D - Unified Firmware (Dual Magnetometer Edition)
+ * * Features: Dual LED Drive, Reactive Lighting, Auto-Hardware Detect, Dual Magnetometer Fusion
  * * Safety:   Includes Sensor Watchdog to auto-reset frozen I2C lines
+ * * Advanced: Kalman Filtering, 6DOF separation, Predominant Movement Detection
+ * 
+ * Dual Magnetometer Configuration:
+ * - Sensor 1 (Solder): Located at 3 o'clock position under knob
+ * - Sensor 2 (Cable):  Located at 6 o'clock position, rotated 90° clockwise
+ *   - Coordinate transformation applied: X' = Y, Y' = -X, Z' = Z
+ * 
+ * Sensor Fusion Logic:
+ * - Translation (Tx, Ty, Tz): Average of both sensors
+ * - Rotation (Rx, Ry, Rz): Differential measurements between sensors
+ * - Kalman filtering applied to all 6 DOF for noise reduction
+ * - Only predominant movement is transmitted via HID (no cross-talk)
  */
 
 #include "Adafruit_TinyUSB.h"
@@ -10,10 +22,14 @@
 #include "UserConfig.h"
 
 // --- CONSTANTS ---
+#ifdef PIN_NEOPIXEL
+  #undef PIN_NEOPIXEL  // Undefine board variant default to use our custom pin
+#endif
 #define PIN_NEOPIXEL   4
 #define PIN_SIMPLE     3
 #define HANG_THRESHOLD 50              // consecutive identical readings before reset
 #define PREVENTIVE_RESET_INTERVAL 0    // Set to 300000 (5 mins) if you want periodic resets
+#define LED_MOVEMENT_INTENSITY_MULTIPLIER 30.0  // Converts movement magnitude to LED brightness
 
 // --- LED SETUP ---
 Adafruit_NeoPixel strip(NUM_ADDRESSABLE_LEDS, PIN_NEOPIXEL, NEO_GRB + NEO_KHZ800);
@@ -28,20 +44,54 @@ bool prevButtonState[] = {false, false, false, false};
 struct MagCalibration {
   double x_neutral = 0.0, y_neutral = 0.0, z_neutral = 0.0;
   bool calibrated = false;
-} magCal;
+};
+
+// Kalman filter for a single axis
+struct KalmanFilter {
+  double q = 0.01;     // Process noise covariance
+  double r = 0.1;      // Measurement noise covariance
+  double x = 0.0;      // Estimated value
+  double p = 1.0;      // Estimation error covariance
+  double k = 0.0;      // Kalman gain
+  
+  double update(double measurement) {
+    // Prediction
+    p = p + q;
+    
+    // Prevent filter lock-up by maintaining minimum covariance
+    if (p < 0.001) p = 0.001;
+    
+    // Update
+    k = p / (p + r);
+    x = x + k * (measurement - x);
+    p = (1 - k) * p;
+    
+    return x;
+  }
+};
+
+// Calibration for both sensors
+MagCalibration magCalSolder, magCalCable;
 
 struct SensorWatchdog {
   double last_x = 0.0, last_y = 0.0, last_z = 0.0;
   int sameValueCount = 0;
   unsigned long lastResetTime = 0;
   unsigned long lastPreventiveReset = 0;
-} watchdog;
+};
+
+SensorWatchdog watchdogSolder, watchdogCable;
+
+// Kalman filters for 6 DOF (Translation and Rotation)
+KalmanFilter kalman_tx, kalman_ty, kalman_tz;
+KalmanFilter kalman_rx, kalman_ry, kalman_rz;
 
 using namespace ifx::tlx493d;
 
 TLx493D_A1B6 magCable(Wire1, TLx493D_IIC_ADDR_A0_e);
 TLx493D_A1B6 magSolder(Wire, TLx493D_IIC_ADDR_A0_e);
-TLx493D_A1B6* activeSensor = nullptr;
+bool bothSensorsActive = false;
+bool cableSensorActive = false;
 
 // HID Report Descriptor
 static const uint8_t spaceMouse_hid_report_desc[] = {
@@ -102,7 +152,7 @@ void handleLeds(double totalMove) {
       int currentScale = minScale;
 
       if (totalMove > CONFIG_DEADZONE) {
-         int addedIntensity = (int)(totalMove * 30.0);
+         int addedIntensity = (int)(totalMove * LED_MOVEMENT_INTENSITY_MULTIPLIER);
          currentScale = constrain(minScale + addedIntensity, minScale, maxScale);
       }
       
@@ -113,26 +163,45 @@ void handleLeds(double totalMove) {
   }
 }
 
-void resetMagnetometer() {
+void resetMagnetometer(bool isCable) {
   // Briefly flash Red to indicate reset
   updateHardwareLeds(255, 0, 0);
   
-  activeSensor->end();
+  TLx493D_A1B6* sensor = isCable ? &magCable : &magSolder;
+  SensorWatchdog* wd = isCable ? &watchdogCable : &watchdogSolder;
+  
+  sensor->end();
   delay(50);
   
   // Restart the correct Wire interface
-  if (activeSensor == &magCable) {
+  if (isCable) {
       Wire1.end(); delay(50); Wire1.begin(); 
   } else {
       Wire.end(); delay(50); Wire.begin();
   }
   delay(50);
   
-  if (activeSensor->begin()) {
-    watchdog.sameValueCount = 0;
-    watchdog.lastResetTime = millis();
+  // Try to reinitialize the sensor
+  bool success = sensor->begin();
+  
+  if (success) {
+    wd->sameValueCount = 0;
+    wd->lastResetTime = millis();
     // Return to normal color
     updateHardwareLeds(LED_COLOR_R, LED_COLOR_G, LED_COLOR_B);
+  } else {
+    // Reset failed - flash red LED as error indicator
+    for (int i = 0; i < 3; i++) {
+      updateHardwareLeds(255, 0, 0); delay(100);
+      updateHardwareLeds(0, 0, 0); delay(100);
+    }
+    
+    // If in dual sensor mode and one fails, degrade to single sensor mode
+    if (bothSensorsActive) {
+      bothSensorsActive = false;
+      cableSensorActive = !isCable;  // Use the other sensor
+      updateHardwareLeds(255, 128, 0); delay(500); // Orange = degraded mode
+    }
   }
 }
 
@@ -159,22 +228,34 @@ void setup() {
   digitalWrite(MAG_POWER_PIN, HIGH);
   delay(10); 
 
+  // Try to initialize both sensors
   Wire1.begin(); Wire1.setClock(400000);
-  if (magCable.begin()) {
-     activeSensor = &magCable;
-     updateHardwareLeds(0, 255, 0); delay(500); // Green for Cable
+  Wire.begin(); Wire.setClock(400000);
+  
+  bool cable_ok = magCable.begin();
+  bool solder_ok = magSolder.begin();
+  
+  if (cable_ok && solder_ok) {
+    bothSensorsActive = true;
+    cableSensorActive = true;
+    updateHardwareLeds(0, 0, 255); delay(500); // Blue for Dual Sensor mode
+  } 
+  else if (cable_ok) {
+    bothSensorsActive = false;
+    cableSensorActive = true;
+    updateHardwareLeds(0, 255, 0); delay(500); // Green for Cable only
+  } 
+  else if (solder_ok) {
+    bothSensorsActive = false;
+    cableSensorActive = false;
+    updateHardwareLeds(0, 255, 255); delay(500); // Cyan for Solder only
   } 
   else {
-     Wire.begin(); Wire.setClock(400000);
-     if (magSolder.begin()) {
-        activeSensor = &magSolder;
-        updateHardwareLeds(0, 255, 255); delay(500); // Cyan for Solder
-     } else {
-        blinkError(); 
-     }
+    blinkError(); 
   }
 
-  watchdog.lastPreventiveReset = millis();
+  watchdogSolder.lastPreventiveReset = millis();
+  watchdogCable.lastPreventiveReset = millis();
   calibrateMagnetometer();
 }
 
@@ -187,33 +268,67 @@ void loop() {
     }
   }
 
-  if (activeSensor) {
-    readAndSendMagnetometerData();
-  }
+  readAndSendMagnetometerData();
   delay(2);
 }
 
 void calibrateMagnetometer() {
-  double sumX = 0, sumY = 0, sumZ = 0;
-  int valid = 0;
+  double sumX_solder = 0, sumY_solder = 0, sumZ_solder = 0;
+  double sumX_cable = 0, sumY_cable = 0, sumZ_cable = 0;
+  int valid_solder = 0, valid_cable = 0;
   
   updateHardwareLeds(0, 0, 0); delay(100);
   updateHardwareLeds(255, 255, 255); 
   
   for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
     double x, y, z;
-    if(activeSensor->getMagneticField(&x, &y, &z)) {
-      sumX += x; sumY += y; sumZ += z;
-      valid++;
+    
+    // Calibrate solder sensor (if active)
+    if (!cableSensorActive || bothSensorsActive) {
+      if(magSolder.getMagneticField(&x, &y, &z)) {
+        sumX_solder += x; sumY_solder += y; sumZ_solder += z;
+        valid_solder++;
+      }
     }
+    
+    // Calibrate cable sensor (if active)
+    if(cableSensorActive && magCable.getMagneticField(&x, &y, &z)) {
+      sumX_cable += x; sumY_cable += y; sumZ_cable += z;
+      valid_cable++;
+    }
+    
     delay(10);
   }
 
-  if(valid > 0) {
-    magCal.x_neutral = sumX / valid;
-    magCal.y_neutral = sumY / valid;
-    magCal.z_neutral = sumZ / valid;
-    magCal.calibrated = true;
+  // Update calibration for solder sensor
+  if (!cableSensorActive || bothSensorsActive) {
+    if(valid_solder > 0) {
+      magCalSolder.x_neutral = sumX_solder / valid_solder;
+      magCalSolder.y_neutral = sumY_solder / valid_solder;
+      magCalSolder.z_neutral = sumZ_solder / valid_solder;
+      magCalSolder.calibrated = true;
+    }
+  }
+  
+  // Update calibration for cable sensor
+  if(cableSensorActive && valid_cable > 0) {
+    magCalCable.x_neutral = sumX_cable / valid_cable;
+    magCalCable.y_neutral = sumY_cable / valid_cable;
+    magCalCable.z_neutral = sumZ_cable / valid_cable;
+    magCalCable.calibrated = true;
+  }
+  
+  // Check if calibration succeeded
+  bool calibration_success = false;
+  if (bothSensorsActive) {
+    calibration_success = (valid_solder > 0 && valid_cable > 0);
+  } else if (cableSensorActive) {
+    calibration_success = (valid_cable > 0);
+  } else {
+    calibration_success = (valid_solder > 0);
+  }
+  
+  if(calibration_success) {
     updateHardwareLeds(0, 0, 0); delay(200);
   } else {
     for(int i=0; i<5; i++) {
@@ -225,12 +340,212 @@ void calibrateMagnetometer() {
 }
 
 void readAndSendMagnetometerData() {
+  // If only one sensor, fall back to legacy behavior
+  if (!bothSensorsActive) {
+    readAndSendSingleMagnetometer();
+    return;
+  }
+  
+  // Read both sensors
+  double x_solder, y_solder, z_solder;
+  double x_cable, y_cable, z_cable;
+  
+  bool solder_ok = magSolder.getMagneticField(&x_solder, &y_solder, &z_solder);
+  bool cable_ok = magCable.getMagneticField(&x_cable, &y_cable, &z_cable);
+  
+  if (!solder_ok || !cable_ok) {
+    send_tx_rx_reports(0, 0, 0, 0, 0, 0);
+    return;
+  }
+  
+  // Check for finite values
+  if (!isfinite(x_solder) || !isfinite(y_solder) || !isfinite(z_solder) ||
+      !isfinite(x_cable) || !isfinite(y_cable) || !isfinite(z_cable)) {
+    send_tx_rx_reports(0, 0, 0, 0, 0, 0);
+    return;
+  }
+  
+  // Watchdog for solder sensor
+  if (x_solder == watchdogSolder.last_x && y_solder == watchdogSolder.last_y && z_solder == watchdogSolder.last_z) {
+    watchdogSolder.sameValueCount++;
+    if (watchdogSolder.sameValueCount >= HANG_THRESHOLD) {
+      resetMagnetometer(false);
+      return;
+    }
+  } else {
+    watchdogSolder.sameValueCount = 0;
+    watchdogSolder.last_x = x_solder;
+    watchdogSolder.last_y = y_solder;
+    watchdogSolder.last_z = z_solder;
+  }
+  
+  // Watchdog for cable sensor
+  if (x_cable == watchdogCable.last_x && y_cable == watchdogCable.last_y && z_cable == watchdogCable.last_z) {
+    watchdogCable.sameValueCount++;
+    if (watchdogCable.sameValueCount >= HANG_THRESHOLD) {
+      resetMagnetometer(true);
+      return;
+    }
+  } else {
+    watchdogCable.sameValueCount = 0;
+    watchdogCable.last_x = x_cable;
+    watchdogCable.last_y = y_cable;
+    watchdogCable.last_z = z_cable;
+  }
+  
+  // Apply calibration
+  if (magCalSolder.calibrated) {
+    x_solder -= magCalSolder.x_neutral;
+    y_solder -= magCalSolder.y_neutral;
+    z_solder -= magCalSolder.z_neutral;
+  }
+  
+  if (magCalCable.calibrated) {
+    x_cable -= magCalCable.x_neutral;
+    y_cable -= magCalCable.y_neutral;
+    z_cable -= magCalCable.z_neutral;
+  }
+  
+  // Transform cable sensor coordinates (rotated 90° clockwise)
+  // X' = Y, Y' = -X, Z' = Z
+  double x_cable_transformed = y_cable;
+  double y_cable_transformed = -x_cable;
+  double z_cable_transformed = z_cable;
+  
+  // Calculate 6 DOF from dual sensor fusion
+  // Translation: average of both sensors for linear movement
+  double raw_tx = (x_solder + x_cable_transformed) / 2.0;
+  double raw_ty = (y_solder + y_cable_transformed) / 2.0;
+  double raw_tz = (z_solder + z_cable_transformed) / 2.0;
+  
+  // Rotation: Context-aware differential measurements (Version 4)
+  // Key insight: After calibration, z_solder and z_cable_transformed are deviations from neutral
+  // When knob tilts, ONE sensor shows significantly more Z-axis change than the other
+  // Solder at 3 o'clock (right), Cable at 6 o'clock (bottom after transform)
+  // 
+  // New approach based on user feedback: evaluate which sensor varies more
+  // - If cable (bottom) varies more → Pitch (Rx) - forward/back tilt
+  // - If solder (right) varies more → Roll (Ry) - left/right tilt
+  
+  double z_solder_abs = abs(z_solder);
+  double z_cable_abs = abs(z_cable_transformed);
+  
+  // Determine which sensor shows more variation and assign to appropriate axis
+  double raw_rx = 0.0;
+  double raw_ry = 0.0;
+  
+  if (z_cable_abs > z_solder_abs * CONFIG_ROTATION_AXIS_RATIO) {
+    // Cable sensor (bottom) varies significantly more → Pitch (forward/back tilt)
+    raw_rx = z_cable_transformed;  // Use cable's Z deviation for pitch
+    raw_ry = 0.0;  // Suppress roll
+  } 
+  else if (z_solder_abs > z_cable_abs * CONFIG_ROTATION_AXIS_RATIO) {
+    // Solder sensor (right) varies significantly more → Roll (left/right tilt)
+    raw_rx = 0.0;  // Suppress pitch
+    raw_ry = z_solder;  // Use solder's Z deviation for roll
+  }
+  else {
+    // Both sensors vary similarly - use differential (ambiguous case)
+    // This maintains some response when movement is not clearly pitch or roll
+    raw_rx = (z_solder - z_cable_transformed) * 0.5;  // Reduced sensitivity for ambiguous case
+    raw_ry = (z_cable_transformed - z_solder) * 0.5;
+  }
+  
+  double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw: XY asymmetry difference
+  
+  // Apply Kalman filtering
+  double tx = kalman_tx.update(raw_tx);
+  double ty = kalman_ty.update(raw_ty);
+  double tz = kalman_tz.update(raw_tz);
+  double rx = kalman_rx.update(raw_rx);
+  double ry = kalman_ry.update(raw_ry);
+  double rz = kalman_rz.update(raw_rz);
+  
+  // Calculate total movement for LED feedback
+  double totalMove = abs(tx) + abs(ty) + abs(tz) + abs(rx) + abs(ry) + abs(rz);
+  handleLeds(totalMove);
+  
+  // Find predominant movement BEFORE applying deadzones
+  double movements[6] = {abs(tx), abs(ty), abs(tz), abs(rx), abs(ry), abs(rz)};
+  int maxIdx = 0;
+  double maxVal = movements[0];
+  
+  for (int i = 1; i < 6; i++) {
+    if (movements[i] > maxVal) {
+      maxVal = movements[i];
+      maxIdx = i;
+    }
+  }
+  
+  // Apply deadzones based on movement type (per-axis configuration)
+  double* values[6] = {&tx, &ty, &tz, &rx, &ry, &rz};
+  double thresholds[6] = {CONFIG_TX_DEADZONE, CONFIG_TY_DEADZONE, CONFIG_TZ_DEADZONE, 
+                          CONFIG_RX_DEADZONE, CONFIG_RY_DEADZONE, CONFIG_RZ_DEADZONE};
+  
+  // Check if predominant movement is above its threshold
+  if (abs(*values[maxIdx]) < thresholds[maxIdx] || maxVal < CONFIG_MIN_MOVEMENT_THRESHOLD) {
+    send_tx_rx_reports(0, 0, 0, 0, 0, 0);
+    return;
+  }
+  
+  // Scale and send only predominant movement
+  // Apply per-axis scaling with asymmetric multipliers to compensate for non-linear magnetic field
+  int16_t out_tx = 0, out_ty = 0, out_tz = 0;
+  int16_t out_rx = 0, out_ry = 0, out_rz = 0;
+  
+  switch (maxIdx) {
+    case 0: // Tx
+      out_tx = (int16_t)constrain(-tx * CONFIG_TX_SCALE, -32767, 32767);
+      break;
+    case 1: // Ty
+      out_ty = (int16_t)constrain(-ty * CONFIG_TY_SCALE, -32767, 32767);
+      break;
+    case 2: // Tz - asymmetric scaling
+      if (tz >= 0) {
+        // Positive (up/closer) - use positive multiplier
+        out_tz = (int16_t)constrain(tz * CONFIG_TZ_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (down/farther) - use negative multiplier
+        out_tz = (int16_t)constrain(tz * CONFIG_TZ_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
+      }
+      break;
+    case 3: // Rx - asymmetric scaling
+      if (rx >= 0) {
+        // Positive (forward/farther) - use positive multiplier
+        out_rx = (int16_t)constrain(rx * CONFIG_RX_SCALE * CONFIG_RX_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (backward/closer) - use negative multiplier
+        out_rx = (int16_t)constrain(rx * CONFIG_RX_SCALE * CONFIG_RX_NEGATIVE_MULT, -32767, 32767);
+      }
+      break;
+    case 4: // Ry - asymmetric scaling
+      if (ry >= 0) {
+        // Positive (left/farther) - use positive multiplier
+        out_ry = (int16_t)constrain(ry * CONFIG_RY_SCALE * CONFIG_RY_POSITIVE_MULT, -32767, 32767);
+      } else {
+        // Negative (right/closer) - use negative multiplier
+        out_ry = (int16_t)constrain(ry * CONFIG_RY_SCALE * CONFIG_RY_NEGATIVE_MULT, -32767, 32767);
+      }
+      break;
+    case 5: // Rz
+      out_rz = (int16_t)constrain(rz * CONFIG_RZ_SCALE, -32767, 32767);
+      break;
+  }
+  
+  send_tx_rx_reports(out_tx, out_ty, out_tz, out_rx, out_ry, out_rz);
+}
+
+// Legacy single sensor function
+void readAndSendSingleMagnetometer() {
   double x, y, z;
+  TLx493D_A1B6* activeSensor = cableSensorActive ? &magCable : &magSolder;
+  SensorWatchdog* watchdog = cableSensorActive ? &watchdogCable : &watchdogSolder;
+  MagCalibration* magCal = cableSensorActive ? &magCalCable : &magCalSolder;
   
   // Preventive Reset Check
-  if(PREVENTIVE_RESET_INTERVAL > 0 && millis() - watchdog.lastPreventiveReset > PREVENTIVE_RESET_INTERVAL) {
-    resetMagnetometer();
-    watchdog.lastPreventiveReset = millis();
+  if(PREVENTIVE_RESET_INTERVAL > 0 && millis() - watchdog->lastPreventiveReset > PREVENTIVE_RESET_INTERVAL) {
+    resetMagnetometer(cableSensorActive);
+    watchdog->lastPreventiveReset = millis();
     return;
   }
 
@@ -238,25 +553,24 @@ void readAndSendMagnetometerData() {
       if(isfinite(x) && isfinite(y) && isfinite(z)) {
           
           // --- WATCHDOG LOGIC ---
-          // If values are IDENTICAL to last read, sensor might be frozen
-          if(x == watchdog.last_x && y == watchdog.last_y && z == watchdog.last_z) {
-            watchdog.sameValueCount++;
-            if(watchdog.sameValueCount >= HANG_THRESHOLD) {
-              resetMagnetometer();
+          if(x == watchdog->last_x && y == watchdog->last_y && z == watchdog->last_z) {
+            watchdog->sameValueCount++;
+            if(watchdog->sameValueCount >= HANG_THRESHOLD) {
+              resetMagnetometer(cableSensorActive);
               return;
             }
           } else {
-            watchdog.sameValueCount = 0;
-            watchdog.last_x = x;
-            watchdog.last_y = y;
-            watchdog.last_z = z;
+            watchdog->sameValueCount = 0;
+            watchdog->last_x = x;
+            watchdog->last_y = y;
+            watchdog->last_z = z;
           }
 
           // Calibration
-          if(magCal.calibrated) {
-            x -= magCal.x_neutral;
-            y -= magCal.y_neutral;
-            z -= magCal.z_neutral;
+          if(magCal->calibrated) {
+            x -= magCal->x_neutral;
+            y -= magCal->y_neutral;
+            z -= magCal->z_neutral;
           }
           
           double totalMove = abs(x) + abs(y) + abs(z);
@@ -266,16 +580,15 @@ void readAndSendMagnetometerData() {
           if(abs(y) < CONFIG_DEADZONE) y = 0.0;
           if(abs(z) < CONFIG_ZOOM_DEADZONE) z = 0.0;
 
-          int16_t tx = (int16_t)(-x * CONFIG_TRANS_SCALE);
-          int16_t ty = (int16_t)(-y * CONFIG_TRANS_SCALE);
-          int16_t tz = (int16_t)(z * CONFIG_ZOOM_SCALE);
-          int16_t rx = (int16_t)(y * CONFIG_ROT_SCALE);
-          int16_t ry = (int16_t)(x * CONFIG_ROT_SCALE);
+          int16_t tx = (int16_t)constrain(-x * CONFIG_TRANS_SCALE, -32767, 32767);
+          int16_t ty = (int16_t)constrain(-y * CONFIG_TRANS_SCALE, -32767, 32767);
+          int16_t tz = (int16_t)constrain(z * CONFIG_ZOOM_SCALE, -32767, 32767);
+          int16_t rx = (int16_t)constrain(y * CONFIG_ROT_SCALE, -32767, 32767);
+          int16_t ry = (int16_t)constrain(x * CONFIG_ROT_SCALE, -32767, 32767);
           
           send_tx_rx_reports(tx, ty, tz, rx, ry, 0);
       }
   } else {
-      // If we get an error reading, report 0
       send_tx_rx_reports(0, 0, 0, 0, 0, 0);
   }
 }
