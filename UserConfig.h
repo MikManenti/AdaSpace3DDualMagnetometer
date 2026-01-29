@@ -75,6 +75,15 @@
 // #define CONFIG_DEADZONE        1.0    // X/Y translation deadzone
 // #define CONFIG_ZOOM_DEADZONE   2.5    // Z translation deadzone  
 // #define CONFIG_ROT_DEADZONE    1.5    // Rotation deadzones
+
+// Backward compatibility defines for legacy code (single sensor mode, LED handler)
+// These provide default values based on per-axis settings for functions that still use grouped constants
+#define CONFIG_DEADZONE        CONFIG_TX_DEADZONE     // Use TX deadzone as default for translations
+#define CONFIG_ZOOM_DEADZONE   CONFIG_TZ_DEADZONE     // Use TZ deadzone for zoom
+#define CONFIG_ROT_DEADZONE    CONFIG_RX_DEADZONE     // Use RX deadzone as default for rotations
+#define CONFIG_TRANS_SCALE     CONFIG_TX_SCALE        // Use TX scale as default for translations
+#define CONFIG_ZOOM_SCALE      CONFIG_TZ_SCALE        // Use TZ scale for zoom
+#define CONFIG_ROT_SCALE       CONFIG_RX_SCALE        // Use RX scale as default for rotations
 
 // Minimum movement threshold for dual sensor mode
 // This determines the minimum movement value to be considered significant
