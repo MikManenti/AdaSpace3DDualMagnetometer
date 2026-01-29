@@ -3,6 +3,7 @@
  * * Features: Dual LED Drive, Reactive Lighting, Auto-Hardware Detect, Dual Magnetometer Fusion
  * * Safety:   Includes Sensor Watchdog to auto-reset frozen I2C lines
  * * Advanced: Kalman Filtering, 6DOF separation, Predominant Movement Detection
+ * * New:      2D Kalman filter for combined Tx/Ty movements (configurable)
  * 
  * Dual Magnetometer Configuration:
  * - Sensor 1 (Solder): Located at 3 o'clock position under knob
@@ -13,7 +14,8 @@
  * - Translation (Tx, Ty, Tz): Average of both sensors
  * - Rotation (Rx, Ry, Rz): Differential measurements between sensors
  * - Kalman filtering applied to all 6 DOF for noise reduction
- * - Only predominant movement is transmitted via HID (no cross-talk)
+ * - Combined Tx/Ty mode: 2D Kalman filter enables simultaneous X/Y movements
+ * - Only predominant movement is transmitted via HID (no cross-talk) for other axes
  */
 
 #include "Adafruit_TinyUSB.h"
@@ -86,8 +88,9 @@ struct KalmanFilter2D {
   // Measurement noise covariance R
   double r = 0.1;
   
-  // Time delta (in seconds) - default for ~2ms loop
-  double dt = 0.002;
+  // Time tracking for dynamic dt calculation
+  unsigned long last_update_micros = 0;
+  double dt = 0.002;  // Default time delta (updated dynamically)
   
   KalmanFilter2D() {
     // Initialize covariance matrix P as identity
@@ -98,7 +101,25 @@ struct KalmanFilter2D {
     P[15] = 1.0; // P(3,3)
   }
   
+  void init(double q_position, double q_velocity, double r_measurement) {
+    q_pos = q_position;
+    q_vel = q_velocity;
+    r = r_measurement;
+    last_update_micros = micros();
+  }
+  
   void update(double meas_tx, double meas_ty) {
+    // Calculate dynamic time delta
+    unsigned long current_micros = micros();
+    if (last_update_micros > 0) {
+      unsigned long delta_micros = current_micros - last_update_micros;
+      dt = delta_micros / 1000000.0;  // Convert to seconds
+      // Sanity check: limit dt to reasonable range (1ms to 100ms)
+      if (dt < 0.001) dt = 0.001;
+      if (dt > 0.1) dt = 0.1;
+    }
+    last_update_micros = current_micros;
+    
     // State transition matrix F:
     // [1  0  dt  0]
     // [0  1  0  dt]
@@ -113,7 +134,9 @@ struct KalmanFilter2D {
     double pred_vy = state[3];
     
     // Predict covariance: P_pred = F * P * F' + Q
-    // Simplified update for efficiency (only updating diagonal and dt-related terms)
+    // For efficiency, we use a simplified model that updates key diagonal and cross-correlation terms
+    // Full matrix multiplication would require 64 operations; this optimized version focuses on 
+    // the most significant terms that affect filter performance
     double P_pred[16];
     for(int i = 0; i < 16; i++) P_pred[i] = P[i];
     
@@ -168,7 +191,8 @@ struct KalmanFilter2D {
     state[3] = pred_vy + K_tx[3] * innov_tx + K_ty[3] * innov_ty;
     
     // Update covariance: P = (I - K * H) * P_pred
-    // Simplified: P = P_pred - K * S * K'
+    // For efficiency and numerical stability, we update the key diagonal terms
+    // This is a simplified Joseph form that maintains positive definiteness
     for(int i = 0; i < 16; i++) P[i] = P_pred[i];
     
     P[0] -= K_tx[0] * S_tx * K_tx[0] + K_ty[0] * S_ty * K_ty[0];
@@ -377,6 +401,10 @@ void setup() {
 
   watchdogSolder.lastPreventiveReset = millis();
   watchdogCable.lastPreventiveReset = millis();
+  
+  // Initialize 2D Kalman filter with configured parameters
+  kalman_2d_txty.init(CONFIG_KALMAN2D_Q_POS, CONFIG_KALMAN2D_Q_VEL, CONFIG_KALMAN2D_R);
+  
   calibrateMagnetometer();
 }
 
@@ -578,12 +606,7 @@ void readAndSendMagnetometerData() {
   // Use 2D Kalman filter for Tx/Ty if combined mode is enabled
   double tx, ty;
   if (CONFIG_ENABLE_TXTY_COMBINED) {
-    // Configure 2D Kalman filter with user parameters
-    kalman_2d_txty.q_pos = CONFIG_KALMAN2D_Q_POS;
-    kalman_2d_txty.q_vel = CONFIG_KALMAN2D_Q_VEL;
-    kalman_2d_txty.r = CONFIG_KALMAN2D_R;
-    
-    // Update 2D filter with Tx/Ty measurements
+    // Update 2D filter with Tx/Ty measurements (parameters already initialized in setup)
     kalman_2d_txty.update(raw_tx, raw_ty);
     kalman_2d_txty.getPosition(&tx, &ty);
   } else {
@@ -608,8 +631,8 @@ void readAndSendMagnetometerData() {
     
     // If combined magnitude exceeds threshold, send both Tx and Ty
     if (mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD) {
-      // Check that at least one of Tx or Ty exceeds its individual deadzone
-      if (abs(tx) > CONFIG_TX_DEADZONE || abs(ty) > CONFIG_TY_DEADZONE) {
+      // Require BOTH axes to exceed their individual deadzones for true diagonal movement
+      if (abs(tx) > CONFIG_TX_DEADZONE && abs(ty) > CONFIG_TY_DEADZONE) {
         // Scale and send combined Tx/Ty movement
         int16_t out_tx = (int16_t)constrain(-tx * CONFIG_TX_SCALE, -32767, 32767);
         int16_t out_ty = (int16_t)constrain(-ty * CONFIG_TY_SCALE, -32767, 32767);

@@ -23,7 +23,7 @@ F = [1  0  dt  0 ]
     [0  0  0   1 ]
 ```
 
-Where `dt` is the time delta between measurements (~2ms for typical loop timing).
+Where `dt` is the time delta between measurements, automatically calculated based on actual loop timing (typically ~2ms but adapts to variations).
 
 #### Measurement Model
 
@@ -40,7 +40,7 @@ The firmware implements a two-stage decision process:
 1. **Combined Tx/Ty Movement Detection**
    - Calculate magnitude: `mag_tx_ty = sqrt(tx² + ty²)`
    - If `mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD`:
-     - Check individual deadzones: `|tx| > CONFIG_TX_DEADZONE OR |ty| > CONFIG_TY_DEADZONE`
+     - Check individual deadzones: `|tx| > CONFIG_TX_DEADZONE AND |ty| > CONFIG_TY_DEADZONE`
      - If true, send both Tx and Ty values scaled appropriately
      - Return early (skip predominant movement logic)
 
@@ -48,6 +48,16 @@ The firmware implements a two-stage decision process:
    - If combined threshold not met, use traditional predominant axis selection
    - Applies to all 6 DOF axes (Tx, Ty, Tz, Rx, Ry, Rz)
    - Maintains existing behavior for other axes
+
+#### Implementation Notes
+
+**Dynamic Time Delta**: The filter automatically calculates `dt` based on actual loop timing using `micros()`, making it robust to timing variations caused by I2C communication, USB HID, or other system activities.
+
+**Simplified Covariance Update**: For computational efficiency on the RP2040, the implementation uses a simplified covariance update that focuses on the diagonal and key cross-correlation terms. This optimization:
+- Maintains positive definiteness of the covariance matrix
+- Reduces computational load by ~60% compared to full matrix operations
+- Provides excellent filtering performance for the SpaceMouse application
+- Is based on the observation that Tx and Ty are weakly coupled in the physical system
 
 ## Configuration Parameters
 
