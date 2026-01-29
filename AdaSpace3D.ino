@@ -22,6 +22,9 @@
 #include "UserConfig.h"
 
 // --- CONSTANTS ---
+#ifdef PIN_NEOPIXEL
+  #undef PIN_NEOPIXEL  // Undefine board variant default to use our custom pin
+#endif
 #define PIN_NEOPIXEL   4
 #define PIN_SIMPLE     3
 #define HANG_THRESHOLD 50              // consecutive identical readings before reset
