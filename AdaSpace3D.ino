@@ -70,6 +70,124 @@ struct KalmanFilter {
   }
 };
 
+// 2D Kalman filter for combined Tx/Ty movements
+// State: [Tx, Ty, Vx, Vy] where Vx, Vy are velocities
+struct KalmanFilter2D {
+  // State vector: [Tx, Ty, Vx, Vy]
+  double state[4] = {0.0, 0.0, 0.0, 0.0};
+  
+  // State covariance matrix P (4x4) - stored as 1D array
+  double P[16];
+  
+  // Process noise covariance Q
+  double q_pos = 0.01;   // Position process noise
+  double q_vel = 0.1;    // Velocity process noise
+  
+  // Measurement noise covariance R
+  double r = 0.1;
+  
+  // Time delta (in seconds) - default for ~2ms loop
+  double dt = 0.002;
+  
+  KalmanFilter2D() {
+    // Initialize covariance matrix P as identity
+    for(int i = 0; i < 16; i++) P[i] = 0.0;
+    P[0] = 1.0;  // P(0,0)
+    P[5] = 1.0;  // P(1,1)
+    P[10] = 1.0; // P(2,2)
+    P[15] = 1.0; // P(3,3)
+  }
+  
+  void update(double meas_tx, double meas_ty) {
+    // State transition matrix F:
+    // [1  0  dt  0]
+    // [0  1  0  dt]
+    // [0  0  1   0]
+    // [0  0  0   1]
+    
+    // --- PREDICTION STEP ---
+    // Predict state: x_pred = F * x
+    double pred_tx = state[0] + state[2] * dt;
+    double pred_ty = state[1] + state[3] * dt;
+    double pred_vx = state[2];
+    double pred_vy = state[3];
+    
+    // Predict covariance: P_pred = F * P * F' + Q
+    // Simplified update for efficiency (only updating diagonal and dt-related terms)
+    double P_pred[16];
+    for(int i = 0; i < 16; i++) P_pred[i] = P[i];
+    
+    // Add process noise to position and velocity covariances
+    P_pred[0] += q_pos + q_vel * dt * dt;  // P(0,0) - Tx variance
+    P_pred[5] += q_pos + q_vel * dt * dt;  // P(1,1) - Ty variance
+    P_pred[10] += q_vel;                    // P(2,2) - Vx variance
+    P_pred[15] += q_vel;                    // P(3,3) - Vy variance
+    
+    // Cross-correlation terms (position-velocity coupling)
+    P_pred[2] += P[10] * dt;   // P(0,2)
+    P_pred[8] = P_pred[2];     // P(2,0) - symmetric
+    P_pred[7] += P[15] * dt;   // P(1,3)
+    P_pred[13] = P_pred[7];    // P(3,1) - symmetric
+    
+    // Prevent covariance collapse
+    if(P_pred[0] < 0.001) P_pred[0] = 0.001;
+    if(P_pred[5] < 0.001) P_pred[5] = 0.001;
+    if(P_pred[10] < 0.001) P_pred[10] = 0.001;
+    if(P_pred[15] < 0.001) P_pred[15] = 0.001;
+    
+    // --- UPDATE STEP ---
+    // Measurement matrix H:
+    // [1  0  0  0]  - We measure Tx
+    // [0  1  0  0]  - We measure Ty
+    
+    // Innovation (measurement residual): y = z - H * x_pred
+    double innov_tx = meas_tx - pred_tx;
+    double innov_ty = meas_ty - pred_ty;
+    
+    // Innovation covariance: S = H * P_pred * H' + R
+    double S_tx = P_pred[0] + r;  // S(0,0)
+    double S_ty = P_pred[5] + r;  // S(1,1)
+    
+    // Kalman gain: K = P_pred * H' * inv(S)
+    // For 2D case with independent measurements, this simplifies:
+    double K_tx[4], K_ty[4];
+    K_tx[0] = P_pred[0] / S_tx;   // K(0,0)
+    K_tx[1] = P_pred[4] / S_tx;   // K(1,0)
+    K_tx[2] = P_pred[8] / S_tx;   // K(2,0)
+    K_tx[3] = P_pred[12] / S_tx;  // K(3,0)
+    
+    K_ty[0] = P_pred[1] / S_ty;   // K(0,1)
+    K_ty[1] = P_pred[5] / S_ty;   // K(1,1)
+    K_ty[2] = P_pred[9] / S_ty;   // K(2,1)
+    K_ty[3] = P_pred[13] / S_ty;  // K(3,1)
+    
+    // Update state: x = x_pred + K * y
+    state[0] = pred_tx + K_tx[0] * innov_tx + K_ty[0] * innov_ty;
+    state[1] = pred_ty + K_tx[1] * innov_tx + K_ty[1] * innov_ty;
+    state[2] = pred_vx + K_tx[2] * innov_tx + K_ty[2] * innov_ty;
+    state[3] = pred_vy + K_tx[3] * innov_tx + K_ty[3] * innov_ty;
+    
+    // Update covariance: P = (I - K * H) * P_pred
+    // Simplified: P = P_pred - K * S * K'
+    for(int i = 0; i < 16; i++) P[i] = P_pred[i];
+    
+    P[0] -= K_tx[0] * S_tx * K_tx[0] + K_ty[0] * S_ty * K_ty[0];
+    P[5] -= K_tx[1] * S_tx * K_tx[1] + K_ty[1] * S_ty * K_ty[1];
+    P[10] -= K_tx[2] * S_tx * K_tx[2] + K_ty[2] * S_ty * K_ty[2];
+    P[15] -= K_tx[3] * S_tx * K_tx[3] + K_ty[3] * S_ty * K_ty[3];
+  }
+  
+  void getPosition(double* tx, double* ty) {
+    *tx = state[0];
+    *ty = state[1];
+  }
+  
+  void getVelocity(double* vx, double* vy) {
+    *vx = state[2];
+    *vy = state[3];
+  }
+};
+
 // Calibration for both sensors
 MagCalibration magCalSolder, magCalCable;
 
@@ -85,6 +203,9 @@ SensorWatchdog watchdogSolder, watchdogCable;
 // Kalman filters for 6 DOF (Translation and Rotation)
 KalmanFilter kalman_tx, kalman_ty, kalman_tz;
 KalmanFilter kalman_rx, kalman_ry, kalman_rz;
+
+// 2D Kalman filter for combined Tx/Ty movements
+KalmanFilter2D kalman_2d_txty;
 
 using namespace ifx::tlx493d;
 
@@ -454,8 +575,23 @@ void readAndSendMagnetometerData() {
   double raw_rz = (x_solder - y_solder) - (x_cable_transformed - y_cable_transformed);  // Yaw: XY asymmetry difference
   
   // Apply Kalman filtering
-  double tx = kalman_tx.update(raw_tx);
-  double ty = kalman_ty.update(raw_ty);
+  // Use 2D Kalman filter for Tx/Ty if combined mode is enabled
+  double tx, ty;
+  if (CONFIG_ENABLE_TXTY_COMBINED) {
+    // Configure 2D Kalman filter with user parameters
+    kalman_2d_txty.q_pos = CONFIG_KALMAN2D_Q_POS;
+    kalman_2d_txty.q_vel = CONFIG_KALMAN2D_Q_VEL;
+    kalman_2d_txty.r = CONFIG_KALMAN2D_R;
+    
+    // Update 2D filter with Tx/Ty measurements
+    kalman_2d_txty.update(raw_tx, raw_ty);
+    kalman_2d_txty.getPosition(&tx, &ty);
+  } else {
+    // Fall back to independent 1D filters
+    tx = kalman_tx.update(raw_tx);
+    ty = kalman_ty.update(raw_ty);
+  }
+  
   double tz = kalman_tz.update(raw_tz);
   double rx = kalman_rx.update(raw_rx);
   double ry = kalman_ry.update(raw_ry);
@@ -465,6 +601,25 @@ void readAndSendMagnetometerData() {
   double totalMove = abs(tx) + abs(ty) + abs(tz) + abs(rx) + abs(ry) + abs(rz);
   handleLeds(totalMove);
   
+  // NEW LOGIC: Check for combined Tx/Ty movement first
+  if (CONFIG_ENABLE_TXTY_COMBINED) {
+    // Calculate combined magnitude of Tx and Ty
+    double mag_tx_ty = sqrt(tx * tx + ty * ty);
+    
+    // If combined magnitude exceeds threshold, send both Tx and Ty
+    if (mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD) {
+      // Check that at least one of Tx or Ty exceeds its individual deadzone
+      if (abs(tx) > CONFIG_TX_DEADZONE || abs(ty) > CONFIG_TY_DEADZONE) {
+        // Scale and send combined Tx/Ty movement
+        int16_t out_tx = (int16_t)constrain(-tx * CONFIG_TX_SCALE, -32767, 32767);
+        int16_t out_ty = (int16_t)constrain(-ty * CONFIG_TY_SCALE, -32767, 32767);
+        send_tx_rx_reports(out_tx, out_ty, 0, 0, 0, 0);
+        return;
+      }
+    }
+  }
+  
+  // FALLBACK: Use predominant movement logic for all axes
   // Find predominant movement BEFORE applying deadzones
   double movements[6] = {abs(tx), abs(ty), abs(tz), abs(rx), abs(ry), abs(rz)};
   int maxIdx = 0;

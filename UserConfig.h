@@ -100,6 +100,26 @@
 // Lower values = more sensitive (catches mixed movements but more cross-talk)
 #define CONFIG_ROTATION_AXIS_RATIO  1.5
 
+// --- TX/TY COMBINED MOVEMENT CONFIGURATION ---
+// Enable combined Tx/Ty movement mode (when both axes move together)
+// When enabled, Tx and Ty can be sent simultaneously if their combined magnitude exceeds threshold
+// When disabled, falls back to predominant single-axis mode for Tx/Ty
+#define CONFIG_ENABLE_TXTY_COMBINED  true
+
+// Minimum combined magnitude threshold for Tx/Ty movements
+// Combined movements only sent when sqrt(tx^2 + ty^2) > threshold
+// Lower values = more sensitive to diagonal movements
+// Higher values = only strong diagonal movements are detected
+#define CONFIG_TXTY_COMBINED_THRESHOLD  2.0
+
+// 2D Kalman filter parameters for Tx/Ty
+// Process noise for position tracking (lower = smoother but slower response)
+#define CONFIG_KALMAN2D_Q_POS  0.01
+// Process noise for velocity tracking (affects responsiveness to acceleration)
+#define CONFIG_KALMAN2D_Q_VEL  0.1
+// Measurement noise (lower = trust sensor more, higher = more filtering)
+#define CONFIG_KALMAN2D_R  0.1
+
 // --- USB IDENTIFICATION ---
 // 0x046d / 0xc626 = SpaceNavigator (Best for DIY compatibility)
 #define USB_VID             0x256f
