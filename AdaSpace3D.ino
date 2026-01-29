@@ -605,6 +605,10 @@ void setButtonStateHID(uint8_t hidButton, bool pressed) {
 void send_tx_rx_reports(int16_t tx, int16_t ty, int16_t tz, int16_t rx, int16_t ry, int16_t rz) {
   if (!TinyUSBDevice.mounted() || !usb_hid.ready()) return;
 
+  tx = -tx;
+  tz = -tz;
+  rx = -rx;
+
   uint8_t tx_report[6] = {(uint8_t)tx, (uint8_t)(tx>>8), (uint8_t)ty, (uint8_t)(ty>>8), (uint8_t)tz, (uint8_t)(tz>>8)};
   usb_hid.sendReport(1, tx_report, 6);
   
@@ -613,3 +617,4 @@ void send_tx_rx_reports(int16_t tx, int16_t ty, int16_t tz, int16_t rx, int16_t 
   uint8_t rx_report[6] = {(uint8_t)rx, (uint8_t)(rx>>8), (uint8_t)ry, (uint8_t)(ry>>8), (uint8_t)rz, (uint8_t)(rz>>8)};
   usb_hid.sendReport(2, rx_report, 6);
 }
+
