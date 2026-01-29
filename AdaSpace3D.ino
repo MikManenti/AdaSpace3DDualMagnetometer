@@ -109,10 +109,17 @@ struct KalmanFilter2D {
   }
   
   void update(double meas_tx, double meas_ty) {
-    // Calculate dynamic time delta
+    // Calculate dynamic time delta with overflow handling
     unsigned long current_micros = micros();
     if (last_update_micros > 0) {
-      unsigned long delta_micros = current_micros - last_update_micros;
+      unsigned long delta_micros;
+      // Handle micros() overflow (occurs every ~70 minutes)
+      if (current_micros >= last_update_micros) {
+        delta_micros = current_micros - last_update_micros;
+      } else {
+        // Overflow occurred: calculate wraparound delta
+        delta_micros = (ULONG_MAX - last_update_micros) + current_micros + 1;
+      }
       dt = delta_micros / 1000000.0;  // Convert to seconds
       // Sanity check: limit dt to reasonable range (1ms to 100ms)
       if (dt < 0.001) dt = 0.001;
@@ -134,9 +141,12 @@ struct KalmanFilter2D {
     double pred_vy = state[3];
     
     // Predict covariance: P_pred = F * P * F' + Q
-    // For efficiency, we use a simplified model that updates key diagonal and cross-correlation terms
+    // NOTE: This is a simplified update optimized for embedded performance on RP2040.
+    // For efficiency, we use a diagonal-dominant approximation that updates key covariance terms
+    // rather than computing the full F*P*F' matrix multiplication (64 operations).
     // Full matrix multiplication would require 64 operations; this optimized version focuses on 
-    // the most significant terms that affect filter performance
+    // the most significant terms that affect filter performance.
+    // Trade-off: ~60% reduction in computation for slight reduction in theoretical optimality.
     double P_pred[16];
     for(int i = 0; i < 16; i++) P_pred[i] = P[i];
     
@@ -191,8 +201,10 @@ struct KalmanFilter2D {
     state[3] = pred_vy + K_tx[3] * innov_tx + K_ty[3] * innov_ty;
     
     // Update covariance: P = (I - K * H) * P_pred
-    // For efficiency and numerical stability, we update the key diagonal terms
-    // This is a simplified Joseph form that maintains positive definiteness
+    // NOTE: This is a simplified diagonal update optimized for embedded performance.
+    // The full Joseph form would be: P = (I - K*H) * P_pred * (I - K*H)' + K*R*K'
+    // For efficiency and numerical stability, we update only the key diagonal terms.
+    // This simplified approach maintains positive definiteness while reducing computation.
     for(int i = 0; i < 16; i++) P[i] = P_pred[i];
     
     P[0] -= K_tx[0] * S_tx * K_tx[0] + K_ty[0] * S_ty * K_ty[0];

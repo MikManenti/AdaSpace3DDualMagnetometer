@@ -51,13 +51,16 @@ The firmware implements a two-stage decision process:
 
 #### Implementation Notes
 
-**Dynamic Time Delta**: The filter automatically calculates `dt` based on actual loop timing using `micros()`, making it robust to timing variations caused by I2C communication, USB HID, or other system activities.
+**Dynamic Time Delta**: The filter automatically calculates `dt` based on actual loop timing using `micros()` with overflow handling, making it robust to timing variations caused by I2C communication, USB HID, or other system activities. The implementation correctly handles the ~70-minute overflow of `micros()`.
 
 **Simplified Covariance Update**: For computational efficiency on the RP2040, the implementation uses a simplified covariance update that focuses on the diagonal and key cross-correlation terms. This optimization:
 - Maintains positive definiteness of the covariance matrix
 - Reduces computational load by ~60% compared to full matrix operations
 - Provides excellent filtering performance for the SpaceMouse application
 - Is based on the observation that Tx and Ty are weakly coupled in the physical system
+- Trade-off: Slight reduction in theoretical optimality for significant performance gain
+
+**Note**: The simplified covariance approach is an intentional design choice optimized for real-time embedded systems. For applications requiring maximum theoretical accuracy, the full matrix operations can be implemented at the cost of increased computational overhead.
 
 ## Configuration Parameters
 
@@ -250,10 +253,10 @@ All parameters can be adjusted in `UserConfig.h`:
 Potential improvements for future versions:
 
 1. **Adaptive threshold**: Automatically adjust based on movement statistics
-2. **Configurable time delta**: Auto-detect loop timing for `dt`
-3. **Extended state**: Add acceleration terms for smoother tracking
-4. **Multi-axis combined**: Extend to 3D (Tx/Ty/Tz) or rotation axes
-5. **User profiles**: Preset configurations for different use cases
+2. **Extended state**: Add acceleration terms for smoother tracking
+3. **Multi-axis combined**: Extend to 3D (Tx/Ty/Tz) or rotation axes
+4. **User profiles**: Preset configurations for different use cases
+5. **Full covariance update**: Implement complete matrix operations for maximum accuracy (if performance allows)
 
 ## Technical References
 
