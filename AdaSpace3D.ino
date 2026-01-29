@@ -474,10 +474,10 @@ void readAndSendMagnetometerData() {
     }
   }
   
-  // Apply deadzones based on movement type
+  // Apply deadzones based on movement type (per-axis configuration)
   double* values[6] = {&tx, &ty, &tz, &rx, &ry, &rz};
-  double thresholds[6] = {CONFIG_DEADZONE, CONFIG_DEADZONE, CONFIG_ZOOM_DEADZONE, 
-                          CONFIG_ROT_DEADZONE, CONFIG_ROT_DEADZONE, CONFIG_ROT_DEADZONE};
+  double thresholds[6] = {CONFIG_TX_DEADZONE, CONFIG_TY_DEADZONE, CONFIG_TZ_DEADZONE, 
+                          CONFIG_RX_DEADZONE, CONFIG_RY_DEADZONE, CONFIG_RZ_DEADZONE};
   
   // Check if predominant movement is above its threshold
   if (abs(*values[maxIdx]) < thresholds[maxIdx] || maxVal < CONFIG_MIN_MOVEMENT_THRESHOLD) {
@@ -486,46 +486,46 @@ void readAndSendMagnetometerData() {
   }
   
   // Scale and send only predominant movement
-  // Apply asymmetric scaling to compensate for non-linear magnetic field
+  // Apply per-axis scaling with asymmetric multipliers to compensate for non-linear magnetic field
   int16_t out_tx = 0, out_ty = 0, out_tz = 0;
   int16_t out_rx = 0, out_ry = 0, out_rz = 0;
   
   switch (maxIdx) {
     case 0: // Tx
-      out_tx = (int16_t)constrain(-tx * CONFIG_TRANS_SCALE, -32767, 32767);
+      out_tx = (int16_t)constrain(-tx * CONFIG_TX_SCALE, -32767, 32767);
       break;
     case 1: // Ty
-      out_ty = (int16_t)constrain(-ty * CONFIG_TRANS_SCALE, -32767, 32767);
+      out_ty = (int16_t)constrain(-ty * CONFIG_TY_SCALE, -32767, 32767);
       break;
     case 2: // Tz - asymmetric scaling
       if (tz >= 0) {
         // Positive (up/closer) - use positive multiplier
-        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
+        out_tz = (int16_t)constrain(tz * CONFIG_TZ_SCALE * CONFIG_TZ_POSITIVE_MULT, -32767, 32767);
       } else {
         // Negative (down/farther) - use negative multiplier
-        out_tz = (int16_t)constrain(tz * CONFIG_ZOOM_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
+        out_tz = (int16_t)constrain(tz * CONFIG_TZ_SCALE * CONFIG_TZ_NEGATIVE_MULT, -32767, 32767);
       }
       break;
     case 3: // Rx - asymmetric scaling
       if (rx >= 0) {
         // Positive (forward/farther) - use positive multiplier
-        out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_POSITIVE_MULT, -32767, 32767);
+        out_rx = (int16_t)constrain(rx * CONFIG_RX_SCALE * CONFIG_RX_POSITIVE_MULT, -32767, 32767);
       } else {
         // Negative (backward/closer) - use negative multiplier
-        out_rx = (int16_t)constrain(rx * CONFIG_ROT_SCALE * CONFIG_RX_NEGATIVE_MULT, -32767, 32767);
+        out_rx = (int16_t)constrain(rx * CONFIG_RX_SCALE * CONFIG_RX_NEGATIVE_MULT, -32767, 32767);
       }
       break;
     case 4: // Ry - asymmetric scaling
       if (ry >= 0) {
         // Positive (left/farther) - use positive multiplier
-        out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_POSITIVE_MULT, -32767, 32767);
+        out_ry = (int16_t)constrain(ry * CONFIG_RY_SCALE * CONFIG_RY_POSITIVE_MULT, -32767, 32767);
       } else {
         // Negative (right/closer) - use negative multiplier
-        out_ry = (int16_t)constrain(ry * CONFIG_ROT_SCALE * CONFIG_RY_NEGATIVE_MULT, -32767, 32767);
+        out_ry = (int16_t)constrain(ry * CONFIG_RY_SCALE * CONFIG_RY_NEGATIVE_MULT, -32767, 32767);
       }
       break;
     case 5: // Rz
-      out_rz = (int16_t)constrain(rz * CONFIG_ROT_SCALE, -32767, 32767);
+      out_rz = (int16_t)constrain(rz * CONFIG_RZ_SCALE, -32767, 32767);
       break;
   }
   

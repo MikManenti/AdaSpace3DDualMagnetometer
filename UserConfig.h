@@ -34,10 +34,20 @@
 #define BUTTON4_PIN         A3
 
 // --- SENSOR SETTINGS ---
-// SENSITIVITY: 150.0 is the "Golden" value for this sensor
-#define CONFIG_TRANS_SCALE     100 
-#define CONFIG_ZOOM_SCALE      50  
-#define CONFIG_ROT_SCALE       40 
+// Per-axis scaling values - fine-tune sensitivity for each axis independently
+// Higher values = more sensitive (larger movements in software)
+// Lower values = less sensitive (smaller movements in software)
+#define CONFIG_TX_SCALE        100   // Translation X (left/right) sensitivity
+#define CONFIG_TY_SCALE        100   // Translation Y (forward/back) sensitivity
+#define CONFIG_TZ_SCALE        50    // Translation Z (up/down) sensitivity
+#define CONFIG_RX_SCALE        40    // Rotation X (pitch) sensitivity
+#define CONFIG_RY_SCALE        40    // Rotation Y (roll) sensitivity
+#define CONFIG_RZ_SCALE        40    // Rotation Z (yaw) sensitivity
+
+// Legacy grouped settings (kept for reference, not used)
+// #define CONFIG_TRANS_SCALE     100 
+// #define CONFIG_ZOOM_SCALE      50  
+// #define CONFIG_ROT_SCALE       40 
 
 // Asymmetric scaling multipliers (compensate for non-linear magnetic field)
 // When magnets move AWAY from sensors, signal is weaker - these multipliers compensate
@@ -50,11 +60,21 @@
 #define CONFIG_TZ_POSITIVE_MULT  1.0   // Tz up (magnet closer)
 #define CONFIG_TZ_NEGATIVE_MULT  1.5   // Tz down (magnet away) - typically needs boost
 
-// DEADZONES: Keep small (1.0) because raw values are tiny
-// These values filter out sensor noise and unintended micro-movements
-#define CONFIG_DEADZONE        1.0    // X/Y translation deadzone
-#define CONFIG_ZOOM_DEADZONE   2.5    // Z translation deadzone  
-#define CONFIG_ROT_DEADZONE    1.5    // Rotation deadzones (Rx, Ry, Rz)
+// Per-axis deadzones - filter out noise and micro-movements for each axis independently
+// Keep values small (1.0-2.5) because raw sensor values are tiny
+// Higher values = less noise but less responsive
+// Lower values = more responsive but more noise
+#define CONFIG_TX_DEADZONE     1.0    // Translation X deadzone
+#define CONFIG_TY_DEADZONE     1.0    // Translation Y deadzone
+#define CONFIG_TZ_DEADZONE     2.5    // Translation Z deadzone
+#define CONFIG_RX_DEADZONE     1.5    // Rotation X (pitch) deadzone
+#define CONFIG_RY_DEADZONE     1.5    // Rotation Y (roll) deadzone
+#define CONFIG_RZ_DEADZONE     1.5    // Rotation Z (yaw) deadzone
+
+// Legacy grouped deadzones (kept for reference, not used)
+// #define CONFIG_DEADZONE        1.0    // X/Y translation deadzone
+// #define CONFIG_ZOOM_DEADZONE   2.5    // Z translation deadzone  
+// #define CONFIG_ROT_DEADZONE    1.5    // Rotation deadzones
 
 // Minimum movement threshold for dual sensor mode
 // This determines the minimum movement value to be considered significant

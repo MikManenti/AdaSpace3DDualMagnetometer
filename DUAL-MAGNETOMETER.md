@@ -103,16 +103,22 @@ This eliminates cross-talk and provides clean, separated movements.
 
 All parameters can be adjusted in `UserConfig.h`:
 
-### Sensitivity Scales
+### Per-Axis Sensitivity Scales (New in v7)
 ```cpp
-#define CONFIG_TRANS_SCALE     100   // Translation sensitivity
-#define CONFIG_ZOOM_SCALE      50    // Z-axis (zoom) sensitivity
-#define CONFIG_ROT_SCALE       40    // Rotation sensitivity
+#define CONFIG_TX_SCALE        100   // Translation X (left/right)
+#define CONFIG_TY_SCALE        100   // Translation Y (forward/back)
+#define CONFIG_TZ_SCALE        50    // Translation Z (up/down)
+#define CONFIG_RX_SCALE        40    // Rotation X (pitch)
+#define CONFIG_RY_SCALE        40    // Rotation Y (roll)
+#define CONFIG_RZ_SCALE        40    // Rotation Z (yaw)
 ```
+- **Individual control** for each of the 6 axes
 - **Higher values** = More sensitive (larger movements in software)
 - **Lower values** = Less sensitive (smaller movements in software)
+- Fine-tune each axis independently for optimal feel
+- Default values match previous grouped settings for backward compatibility
 
-### Asymmetric Scaling (New in v5)
+### Asymmetric Scaling (v5)
 ```cpp
 #define CONFIG_RX_POSITIVE_MULT  1.5   // Rx forward (magnet away)
 #define CONFIG_RX_NEGATIVE_MULT  1.0   // Rx backward (magnet closer)
@@ -127,17 +133,23 @@ All parameters can be adjusted in `UserConfig.h`:
 - **Default 1.5x boost** for "away" movements, 1.0x for "closer" movements
 - Set both to 1.0 for symmetric scaling (disable feature)
 - Adjust based on your specific hardware and magnet distances
+- Applied on top of base per-axis scaling
 
-### Deadzones
+### Per-Axis Deadzones (New in v7)
 ```cpp
-#define CONFIG_DEADZONE        1.0   // X/Y translation deadzone
-#define CONFIG_ZOOM_DEADZONE   2.5   // Z translation deadzone
-#define CONFIG_ROT_DEADZONE    1.5   // Rotation deadzone
+#define CONFIG_TX_DEADZONE     1.0    // Translation X deadzone
+#define CONFIG_TY_DEADZONE     1.0    // Translation Y deadzone
+#define CONFIG_TZ_DEADZONE     2.5    // Translation Z deadzone
+#define CONFIG_RX_DEADZONE     1.5    // Rotation X (pitch) deadzone
+#define CONFIG_RY_DEADZONE     1.5    // Rotation Y (roll) deadzone
+#define CONFIG_RZ_DEADZONE     1.5    // Rotation Z (yaw) deadzone
 ```
+- **Individual control** for filtering noise on each axis
 - Filters out unintended micro-movements and sensor noise
-- Keep values small since raw sensor values are tiny
+- Keep values small (1.0-2.5) since raw sensor values are tiny
 - **Higher values** = Less noise but less responsive
 - **Lower values** = More responsive but more noise
+- Fine-tune based on how each axis behaves on your hardware
 
 ### Movement Threshold
 ```cpp
@@ -262,6 +274,14 @@ else {
 Adjust based on your physical configuration.
 
 ## Changelog
+
+**Version 7 (2026-01-29)**:
+- Added per-axis configuration for complete control
+- Individual scaling values for all 6 axes: `CONFIG_TX_SCALE`, `CONFIG_TY_SCALE`, `CONFIG_TZ_SCALE`, `CONFIG_RX_SCALE`, `CONFIG_RY_SCALE`, `CONFIG_RZ_SCALE`
+- Individual deadzones for all 6 axes: `CONFIG_TX_DEADZONE`, `CONFIG_TY_DEADZONE`, `CONFIG_TZ_DEADZONE`, `CONFIG_RX_DEADZONE`, `CONFIG_RY_DEADZONE`, `CONFIG_RZ_DEADZONE`
+- Allows fine-tuning each axis independently for optimal feel
+- Default values maintain backward compatibility with v5
+- Asymmetric multipliers still apply on top of per-axis base scaling
 
 **Version 5 (2026-01-28)**:
 - Added asymmetric scaling multipliers for directional movements

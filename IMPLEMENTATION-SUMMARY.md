@@ -145,6 +145,43 @@ Implements standard 1D Kalman filter:
 
 ## Version History
 
+### Version 7 - Per-Axis Configuration (2026-01-29)
+
+**User Request**: "I would like better control over the deadzones, can we divide them by creating one for each axis? and maybe divide the scaling values one per axis in addition to the already separated ones for rx, ry and tz"
+
+**Solution**: Implemented complete per-axis configuration for both scaling and deadzones:
+
+```cpp
+// UserConfig.h - Per-axis scaling
+#define CONFIG_TX_SCALE        100   // Translation X
+#define CONFIG_TY_SCALE        100   // Translation Y
+#define CONFIG_TZ_SCALE        50    // Translation Z
+#define CONFIG_RX_SCALE        40    // Rotation X (pitch)
+#define CONFIG_RY_SCALE        40    // Rotation Y (roll)
+#define CONFIG_RZ_SCALE        40    // Rotation Z (yaw)
+
+// Per-axis deadzones
+#define CONFIG_TX_DEADZONE     1.0   // Translation X
+#define CONFIG_TY_DEADZONE     1.0   // Translation Y
+#define CONFIG_TZ_DEADZONE     2.5   // Translation Z
+#define CONFIG_RX_DEADZONE     1.5   // Rotation X
+#define CONFIG_RY_DEADZONE     1.5   // Rotation Y
+#define CONFIG_RZ_DEADZONE     1.5   // Rotation Z
+```
+
+**Benefits**:
+- Complete independent control over each axis
+- Fine-tune sensitivity and noise filtering per axis
+- Accommodates hardware variations and user preferences
+- Maintains backward compatibility with sensible defaults
+- Asymmetric multipliers (v5) still apply on top of base scaling
+
+**Implementation**:
+- Updated threshold array to use per-axis deadzones
+- Updated switch statement to use per-axis base scaling
+- Asymmetric multipliers for Rx, Ry, Tz remain unchanged
+- Default values match previous grouped settings
+
 ### Version 5 - Asymmetric Scaling (2026-01-28)
 
 **Problem**: Movements where magnets move away from sensors (Rx forward, Ry left, Tz down) were slower than opposite movements due to non-linear magnetic field strength vs. distance.
