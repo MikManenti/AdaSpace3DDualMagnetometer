@@ -57,25 +57,26 @@
 #define CONFIG_RX_NEGATIVE_MULT  1.0   // Rx backward (magnet closer)
 #define CONFIG_RY_POSITIVE_MULT  1.5   // Ry left (magnet away) - typically needs boost
 #define CONFIG_RY_NEGATIVE_MULT  1.0   // Ry right (magnet closer)
-#define CONFIG_TZ_POSITIVE_MULT  1.0   // Tz up (magnet closer)
-#define CONFIG_TZ_NEGATIVE_MULT  1.5   // Tz down (magnet away) - typically needs boost
+#define CONFIG_TZ_POSITIVE_MULT  1.0   // Tz down (magnet closer)
+#define CONFIG_TZ_NEGATIVE_MULT  1.5   // Tz up (magnet away) - typically needs boost
 
 // Per-axis deadzones - filter out noise and micro-movements for each axis independently
-// Keep values small (1.0-2.5) because raw sensor values are tiny
+// Keep values small (1.0-2.5) for t movements, (1.0-7.0) for r movements because raw sensor values are tiny
 // Higher values = less noise but less responsive
 // Lower values = more responsive but more noise
 #define CONFIG_TX_DEADZONE     1.0    // Translation X deadzone
-#define CONFIG_TY_DEADZONE     1.0    // Translation Y deadzone
+#define CONFIG_TY_DEADZONE     1.5    // Translation Y deadzone
 #define CONFIG_TZ_DEADZONE     2.5    // Translation Z deadzone
-#define CONFIG_RX_DEADZONE     1.5    // Rotation X (pitch) deadzone
-#define CONFIG_RY_DEADZONE     1.5    // Rotation Y (roll) deadzone
-#define CONFIG_RZ_DEADZONE     1.5    // Rotation Z (yaw) deadzone
+#define CONFIG_RX_DEADZONE     3.0    // Rotation X (pitch) deadzone
+#define CONFIG_RY_DEADZONE     3.0    // Rotation Y (roll) deadzone
+#define CONFIG_RZ_DEADZONE     5.0    // Rotation Z (yaw) deadzone
 
 // Legacy grouped deadzones (kept for reference, not used)
 // #define CONFIG_DEADZONE        1.0    // X/Y translation deadzone
 // #define CONFIG_ZOOM_DEADZONE   2.5    // Z translation deadzone  
 // #define CONFIG_ROT_DEADZONE    1.5    // Rotation deadzones
-
+
+
 // Backward compatibility defines for legacy code (single sensor mode, LED handler)
 // These provide default values based on per-axis settings for functions that still use grouped constants
 #define CONFIG_DEADZONE        CONFIG_TX_DEADZONE     // Use TX deadzone as default for translations
@@ -97,7 +98,7 @@
 // 1.3 = sensor must vary 30% more than the other
 // Higher values = stricter separation (less cross-talk but may miss mixed movements)
 // Lower values = more sensitive (catches mixed movements but more cross-talk)
-#define CONFIG_ROTATION_AXIS_RATIO  1.3
+#define CONFIG_ROTATION_AXIS_RATIO  1.5
 
 // --- USB IDENTIFICATION ---
 // 0x046d / 0xc626 = SpaceNavigator (Best for DIY compatibility)
