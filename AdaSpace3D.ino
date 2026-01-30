@@ -638,16 +638,24 @@ void readAndSendMagnetometerData() {
   
   // NEW LOGIC: Check for combined Tx/Ty movement first
   if (CONFIG_ENABLE_TXTY_COMBINED) {
-    // Calculate combined magnitude of Tx and Ty
-    double mag_tx_ty = sqrt(tx * tx + ty * ty);
+    // CRITICAL FIX: Apply deadzones to Tx and Ty BEFORE calculating combined magnitude
+    // This prevents noise on one axis from contaminating single-axis movements
+    // Example: When moving pure TY, small TX noise from the 2D Kalman filter's velocity
+    // tracking won't contribute to the magnitude calculation if it's below the TX deadzone.
+    // This eliminates cross-talk where moving TY would also send unwanted TX values.
+    double tx_filtered = (abs(tx) > CONFIG_TX_DEADZONE) ? tx : 0.0;
+    double ty_filtered = (abs(ty) > CONFIG_TY_DEADZONE) ? ty : 0.0;
     
-    // If combined magnitude exceeds threshold, send both Tx and Ty
+    // Calculate combined magnitude with deadzone-filtered values
+    double mag_tx_ty = sqrt(tx_filtered * tx_filtered + ty_filtered * ty_filtered);
+    
+    // If combined magnitude exceeds threshold AND both axes are non-zero after deadzone filtering
     if (mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD) {
-      // Require BOTH axes to exceed their individual deadzones for true diagonal movement
-      if (abs(tx) > CONFIG_TX_DEADZONE && abs(ty) > CONFIG_TY_DEADZONE) {
+      // Both axes must be non-zero (already checked by deadzone filtering above)
+      if (tx_filtered != 0.0 && ty_filtered != 0.0) {
         // Scale and send combined Tx/Ty movement
-        int16_t out_tx = (int16_t)constrain(-tx * CONFIG_TX_SCALE, -32767, 32767);
-        int16_t out_ty = (int16_t)constrain(-ty * CONFIG_TY_SCALE, -32767, 32767);
+        int16_t out_tx = (int16_t)constrain(-tx_filtered * CONFIG_TX_SCALE, -32767, 32767);
+        int16_t out_ty = (int16_t)constrain(-ty_filtered * CONFIG_TY_SCALE, -32767, 32767);
         send_tx_rx_reports(out_tx, out_ty, 0, 0, 0, 0);
         return;
       }

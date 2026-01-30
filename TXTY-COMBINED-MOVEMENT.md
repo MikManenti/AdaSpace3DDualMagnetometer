@@ -38,10 +38,10 @@ H = [1  0  0  0]  (measures Tx)
 The firmware implements a two-stage decision process:
 
 1. **Combined Tx/Ty Movement Detection**
-   - Calculate magnitude: `mag_tx_ty = sqrt(tx² + ty²)`
-   - If `mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD`:
-     - Check individual deadzones: `|tx| > CONFIG_TX_DEADZONE AND |ty| > CONFIG_TY_DEADZONE`
-     - If true, send both Tx and Ty values scaled appropriately
+   - **Apply deadzones first**: Filter Tx and Ty through their individual deadzones
+   - Calculate magnitude of deadzone-filtered values: `mag_tx_ty = sqrt(tx_filtered² + ty_filtered²)`
+   - If `mag_tx_ty > CONFIG_TXTY_COMBINED_THRESHOLD` AND both axes non-zero after deadzone:
+     - Send both Tx and Ty values scaled appropriately
      - Return early (skip predominant movement logic)
 
 2. **Fallback to Predominant Movement**
@@ -50,6 +50,12 @@ The firmware implements a two-stage decision process:
    - Maintains existing behavior for other axes
 
 #### Implementation Notes
+
+**Deadzone-First Approach**: The implementation applies individual axis deadzones BEFORE calculating the combined magnitude. This crucial design choice:
+- Prevents noise on one axis from contaminating single-axis movements
+- Ensures that small TX noise doesn't contribute to the magnitude when moving purely along TY
+- Eliminates cross-talk between TX and TY in single-axis movements
+- Only triggers combined mode when BOTH axes have significant movement
 
 **Dynamic Time Delta**: The filter automatically calculates `dt` based on actual loop timing using `micros()` with overflow handling, making it robust to timing variations caused by I2C communication, USB HID, or other system activities. The implementation correctly handles the ~70-minute overflow of `micros()`.
 
@@ -219,6 +225,19 @@ All parameters can be adjusted in `UserConfig.h`:
 - Asymmetric scaling still applied
 
 ## Troubleshooting
+
+### Issue: Single-axis movement contaminated by other axis (e.g., TX contamination when moving TY)
+
+**Cause:** The 2D Kalman filter couples TX and TY together. Small noise on one axis can persist in the filter's velocity state.
+
+**Solution (Already Implemented):**
+The firmware now applies deadzones BEFORE calculating combined magnitude. This prevents noise below the deadzone from contributing to movement detection.
+
+**If still experiencing issues:**
+- Increase the deadzone on the contaminating axis (e.g., increase `CONFIG_TX_DEADZONE` if TX is contaminating TY)
+- Increase `CONFIG_KALMAN2D_R` to apply more filtering to sensor measurements
+- Decrease `CONFIG_KALMAN2D_Q_VEL` to reduce velocity tracking (makes the filter less "sticky")
+- Check sensor calibration - ensure neutral position is properly calibrated
 
 ### Issue: No combined movements detected
 
