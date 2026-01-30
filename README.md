@@ -27,7 +27,7 @@ This is also the place where we hang out to talk, make suggestions, and dream ab
 
 * **Native Driver Support:** Emulates the official 3DConnexion USB protocol. Works out-of-the-box with standard drivers.
 * **🆕 Dual Magnetometer Support:** Advanced sensor fusion using two magnetometers for improved 6DOF motion detection with separated translation and rotation. [See Configuration Guide](DUAL-MAGNETOMETER.md)
-* **🆕 Combined Tx/Ty Movement:** 2D Kalman filter enables simultaneous X/Y translation for precise diagonal movements while maintaining predominant axis logic for other movements. [See Feature Guide](TXTY-COMBINED-MOVEMENT.md)
+* **🆕 Combined Tx/Ty Movement:** 2D Kalman filter enables simultaneous X/Y translation for precise diagonal movements while maintaining predominant axis logic for other movements. **✅ Fixed cross-contamination issue** - single-axis movements now clean and precise. [See Feature Guide](TXTY-COMBINED-MOVEMENT.md)
 * **Unified Firmware:** One file for everyone. The code **automatically detects** if your sensor is connected via **Stemma QT (Cable)** or **Soldered Headers**.
 * **Kalman Filtering:** Advanced noise reduction on all movement axes for smooth, precise control. Includes specialized 2D filter for combined Tx/Ty movements.
 * **Predominant Movement Detection:** Sends only the strongest movement at a time to eliminate cross-talk between axes. This ensures clean, separated movements ideal for precise 3D modeling work. For applications requiring simultaneous multi-axis movements, the single sensor mode provides traditional behavior.
@@ -41,7 +41,7 @@ This is also the place where we hang out to talk, make suggestions, and dream ab
 > **Dual Magnetometer Configuration:** For optimal performance with advanced 6DOF separation, use two magnetometers positioned at 3 o'clock and 6 o'clock under the knob. The firmware automatically detects and calibrates both sensors. See [DUAL-MAGNETOMETER.md](DUAL-MAGNETOMETER.md) for setup details.
 
 > [!TIP]
-> **Combined Tx/Ty Movements:** Enable `CONFIG_ENABLE_TXTY_COMBINED` in UserConfig.h for improved diagonal movement precision using the 2D Kalman filter. Adjust `CONFIG_TXTY_COMBINED_THRESHOLD` to fine-tune sensitivity. See [TXTY-COMBINED-MOVEMENT.md](TXTY-COMBINED-MOVEMENT.md) for details.
+> **Combined Tx/Ty Movements:** Enable `CONFIG_ENABLE_TXTY_COMBINED` in UserConfig.h for improved diagonal movement precision using the 2D Kalman filter. The latest update **fixes cross-contamination** where moving TY would also send TX noise. Now features deadzone-first filtering for clean single-axis movements. See [TXTY-COMBINED-MOVEMENT.md](TXTY-COMBINED-MOVEMENT.md) and [FIX-SUMMARY.md](FIX-SUMMARY.md) for details.
 
 > [!NOTE]
 > **Single Sensor Mode:** With a single magnetometer, yaw (twist) rotation is limited due to the physics of the sensor setup. For best results, configure your 3DConnexion driver to use either **Pan/Zoom** or **Rotation** mode—not both simultaneously. Use the programmable buttons to toggle between these modes on-the-fly.
