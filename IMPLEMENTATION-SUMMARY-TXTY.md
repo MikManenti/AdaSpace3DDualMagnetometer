@@ -25,18 +25,24 @@ This implementation adds a sophisticated 2D Kalman filter to the AdaSpace3D firm
 
 ### 2. Combined Movement Detection Logic
 
-**File**: `AdaSpace3D.ino` (Lines 628-643)
+**File**: `AdaSpace3D.ino` (Lines 639-668)
 
 When `CONFIG_ENABLE_TXTY_COMBINED = true`:
 
-1. **Calculate Combined Magnitude**: `mag_tx_ty = sqrt(tx² + ty²)`
+1. **Apply Deadzones First** (CRITICAL FIX):
+   - Filter TX: `tx_filtered = (abs(tx) > CONFIG_TX_DEADZONE) ? tx : 0.0`
+   - Filter TY: `ty_filtered = (abs(ty) > CONFIG_TY_DEADZONE) ? ty : 0.0`
+   - This prevents noise on one axis from contaminating single-axis movements
 
-2. **Threshold Check**: If magnitude exceeds `CONFIG_TXTY_COMBINED_THRESHOLD`:
-   - Verify BOTH Tx AND Ty exceed their individual deadzones
+2. **Calculate Combined Magnitude**: `mag_tx_ty = sqrt(tx_filtered² + ty_filtered²)`
+   - Uses deadzone-filtered values, not raw Kalman output
+
+3. **Threshold Check**: If magnitude exceeds `CONFIG_TXTY_COMBINED_THRESHOLD`:
+   - Verify BOTH tx_filtered AND ty_filtered are non-zero
    - If true, send both values simultaneously via HID
    - Return early (skip predominant movement selection)
 
-3. **Fallback**: If threshold not met, use traditional predominant axis selection
+4. **Fallback**: If threshold not met or single axis only, use traditional predominant axis selection
 
 ### 3. Configuration Parameters
 
@@ -59,6 +65,56 @@ CONFIG_KALMAN2D_R                // Measurement noise (default: 0.1)
 - One-time initialization of 2D Kalman filter parameters in `setup()`
 - Prevents unnecessary parameter setting on every update cycle
 - Improves efficiency and code clarity
+
+## Critical Bug Fix: TX/TY Cross-Contamination
+
+### Issue Discovered
+After initial deployment, users reported that moving purely along the TY axis caused unwanted TX values to be transmitted, even with increased thresholds. This "cross-contamination" created jittery diagonal movements when only single-axis movement was intended.
+
+### Root Cause
+The original implementation calculated the combined magnitude BEFORE applying individual axis deadzones:
+```cpp
+// BUGGY: Magnitude includes noise
+double mag_tx_ty = sqrt(tx * tx + ty * ty);
+if (mag_tx_ty > threshold) {
+  if (abs(tx) > deadzone && abs(ty) > deadzone) {
+    // Send combined
+  }
+}
+```
+
+When moving pure TY:
+- TY = 5.0 (actual movement)
+- TX = 0.8 (noise from 2D Kalman filter's velocity tracking)
+- Magnitude = sqrt(25 + 0.64) = 5.06 (exceeds threshold!)
+- But TX < deadzone, so check fails
+- Falls back to predominant (correct, but magnitude calculation was polluted)
+
+The 2D Kalman filter couples TX and TY through velocity state. Small noise on TX persists across updates, contaminating the magnitude calculation.
+
+### Fix Applied
+Apply deadzones BEFORE calculating magnitude:
+```cpp
+// FIXED: Filter first, then calculate magnitude
+double tx_filtered = (abs(tx) > CONFIG_TX_DEADZONE) ? tx : 0.0;
+double ty_filtered = (abs(ty) > CONFIG_TY_DEADZONE) ? ty : 0.0;
+double mag_tx_ty = sqrt(tx_filtered * tx_filtered + ty_filtered * ty_filtered);
+```
+
+When moving pure TY:
+- TY = 5.0 → ty_filtered = 5.0 ✓
+- TX = 0.8 → tx_filtered = 0.0 (below deadzone) ✓
+- Magnitude = sqrt(25 + 0) = 5.0 (clean!)
+- Both non-zero check fails immediately
+- Falls back to predominant TY (correct, and clean!)
+
+### Benefits
+1. ✅ Eliminates cross-talk between TX and TY
+2. ✅ Cleaner decision logic path
+3. ✅ Predictable behavior - only true diagonal movements trigger combined mode
+4. ✅ Maintains all benefits of 2D Kalman filter for genuine diagonal movements
+
+See `TXTY-CROSS-CONTAMINATION-FIX.md` for detailed technical analysis.
 
 ## Technical Design Decisions
 
